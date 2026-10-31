@@ -27,7 +27,7 @@ commit="$(git -C "${ROOT}" rev-parse HEAD 2>/dev/null || echo local)"
 "${NODE_BIN}" "${ROOT}/plugins/codex-model-list/hooks/install.mjs" --source "${ROOT}" --commit "${commit}"
 
 printf '%s\n' "Installed Codex Model List. Add the marketplace and plugin with:"
-printf '  codex plugin marketplace add %q\n' "${DATA_ROOT}/current"
+printf '  codex plugin marketplace add %q\n' "$(cat "${DATA_ROOT}/current.txt")"
 printf '%s\n' "  codex plugin add codex-model-list@codex-model-list"
 printf '%s\n' "Fully restart Codex. The startup hook checks the remote commit for five seconds and keeps the installed version on timeout."
 bash "${ROOT}/plugins/codex-model-list/hooks/register-launchd-macos.sh"

@@ -43,4 +43,5 @@ $Interval = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -Repetit
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger @($Trigger, $Interval) -Force | Out-Null
 
 Write-Host "Installed Codex Model List in $DataRoot"
+Write-Host "Marketplace root: $(Get-Content (Join-Path $DataRoot 'current.txt') -Raw).Trim()"
 Write-Host "Restart Codex. The scheduled task updates by commit and syncs the catalog every 30 seconds."
