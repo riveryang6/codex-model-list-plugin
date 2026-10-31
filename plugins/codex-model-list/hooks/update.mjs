@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
@@ -53,7 +53,7 @@ export async function update({
   const root = dataRoot(env);
   const statePath = join(root, 'state.json');
   const versions = join(root, 'versions');
-  const current = join(root, 'current');
+  const currentFile = join(root, 'current.txt');
   const state = readState(statePath);
   const remoteCommit = await latestCommit({ repository, branch, timeout });
   if (!remoteCommit) throw new Error('The remote branch did not resolve to a commit.');
@@ -75,10 +75,9 @@ export async function update({
 
   const actual = (await git(['rev-parse', 'HEAD'], checkout, fetchTimeout)).stdout.trim();
   if (actual !== remoteCommit) throw new Error(`Checked out ${actual}, expected ${remoteCommit}.`);
-  const temporaryLink = join(root, `.current.${process.pid}`);
-  rmSync(temporaryLink, { force: true });
-  symlinkSync(checkout, temporaryLink);
-  renameSync(temporaryLink, current);
+  const temporaryPointer = join(root, `.current-${process.pid}.tmp`);
+  writeFileSync(temporaryPointer, `${checkout}\n`, 'utf8');
+  renameSync(temporaryPointer, currentFile);
   const nextState = { commit: actual, installedAt: new Date().toISOString() };
   const temporary = `${statePath}.${process.pid}.tmp`;
   writeFileSync(temporary, `${JSON.stringify(nextState, null, 2)}\n`, 'utf8');

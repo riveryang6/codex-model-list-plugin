@@ -14,10 +14,5 @@ if [[ -z "${NODE_BIN}" ]]; then
   exit 0
 fi
 
-ACTIVE_ROOT="${DATA_ROOT}/current"
-if [[ ! -f "${ACTIVE_ROOT}/plugins/codex-model-list/hooks/sync.mjs" ]]; then
-  ACTIVE_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-fi
-
-"${NODE_BIN}" "${ACTIVE_ROOT}/plugins/codex-model-list/hooks/sync.mjs" || true
+"${NODE_BIN}" "${SCRIPT_DIR}/update-and-sync.mjs" || true
 exit 0

@@ -12,6 +12,8 @@ The plugin does not ship an upstream URL, API key, model snapshot, or user confi
 
 ## Install
 
+### macOS
+
 ```bash
 git clone https://github.com/riveryang6/codex-model-list-plugin.git
 cd codex-model-list-plugin
@@ -20,7 +22,19 @@ codex plugin marketplace add "$PWD"
 codex plugin add codex-model-list@codex-model-list
 ```
 
-The first session may ask you to trust the plugin's `SessionStart` hook in Codex's `/hooks` view.
+`install-macos.sh` registers the proxy and commit updater as launchd agents. The plugin intentionally has no Codex lifecycle-hook declaration, so it does not require repeated hook trust prompts.
+
+### Windows
+
+Run PowerShell 7 or Windows PowerShell from the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+```
+
+The Windows installer uses the native Git checkout, a cross-platform `current.txt` pointer, and a Scheduled Task that runs the commit check and catalog sync every 30 seconds. It does not require WSL, bash, or symbolic links.
+
+After installation, add the marketplace and plugin with the paths printed by the installer, then restart Codex.
 
 ## Configuration
 

@@ -8,7 +8,7 @@ LAUNCH_AGENTS="${HOME}/Library/LaunchAgents"
 NODE_BIN="${CODEX_MODEL_LIST_NODE:-$(command -v node || true)}"
 PROXY_LABEL="com.riveryang6.codex-model-list.proxy"
 SYNC_LABEL="com.riveryang6.codex-model-list.sync"
-SYNC_SCRIPT="${DATA_ROOT}/current/plugins/codex-model-list/hooks/update-and-sync.mjs"
+SYNC_SCRIPT="${SCRIPT_DIR}/update-and-sync.mjs"
 PROXY_PLIST="${LAUNCH_AGENTS}/${PROXY_LABEL}.plist"
 SYNC_PLIST="${LAUNCH_AGENTS}/${SYNC_LABEL}.plist"
 

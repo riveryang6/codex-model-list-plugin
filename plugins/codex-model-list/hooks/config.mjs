@@ -82,6 +82,16 @@ export function resolveUpstream(provider, savedUpstream = null) {
   return provider.baseUrl;
 }
 
+export function activePluginRoot(home = codexHome()) {
+  const dataRoot = process.env.CODEX_MODEL_LIST_DATA || join(home, 'codex-model-list');
+  const pointer = join(dataRoot, 'current.txt');
+  if (existsSync(pointer)) {
+    const value = readFileSync(pointer, 'utf8').trim();
+    if (value && existsSync(join(value, 'plugins', 'codex-model-list', '.codex-plugin', 'plugin.json'))) return value;
+  }
+  return null;
+}
+
 export function resolveCredential(auth, provider, env = process.env) {
   if (provider.envKey && env[provider.envKey]) return { token: env[provider.envKey], source: `env:${provider.envKey}` };
   if (env.OPENAI_API_KEY) return { token: env.OPENAI_API_KEY, source: 'env:OPENAI_API_KEY' };
@@ -112,4 +122,18 @@ export function rewriteProviderBaseUrl(text, providerName, replacement) {
   if (!base.test(section)) return null;
   const updated = section.replace(base, `base_url = ${JSON.stringify(replacement)}`);
   return text.slice(0, start) + updated + text.slice(end);
+}
+
+export function rewriteMarketplaceSource(text, marketplaceName, replacement) {
+  const escaped = marketplaceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const header = new RegExp(`^\\[marketplaces\\.${escaped}\\]\\s*$`, 'm').exec(text);
+  if (!header) return null;
+  const start = header.index + header[0].length;
+  const rest = text.slice(start);
+  const next = rest.search(/^\[/m);
+  const end = next >= 0 ? start + next : text.length;
+  const section = text.slice(start, end);
+  const source = /^source\s*=\s*.*$/m;
+  if (!source.test(section)) return null;
+  return text.slice(0, start) + section.replace(source, `source = ${JSON.stringify(replacement)}`) + text.slice(end);
 }

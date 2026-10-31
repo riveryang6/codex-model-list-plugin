@@ -6,6 +6,7 @@ import {
   resolveCredential,
   resolveModelsEndpoint,
   resolveProvider,
+  rewriteMarketplaceSource,
   rewriteProviderBaseUrl,
 } from '../plugins/codex-model-list/hooks/config.mjs';
 
@@ -65,4 +66,23 @@ wire_api = "responses"
   const updated = rewriteProviderBaseUrl(text, 'custom', 'http://127.0.0.1:47831/v1');
   assert.match(updated, /\[model_providers\.other\][\s\S]*base_url = "https:\/\/other\.test\/v1"/);
   assert.match(updated, /\[model_providers\.custom\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:47831\/v1"/);
+});
+
+test('marketplace source rewrite is scoped and preserves other sections', () => {
+  const text = `
+[marketplaces.other]
+source_type = "local"
+source = "/tmp/other"
+
+[marketplaces.codex-model-list]
+source_type = "local"
+source = "/tmp/old"
+
+[plugins."codex-model-list@codex-model-list"]
+enabled = true
+`;
+  const updated = rewriteMarketplaceSource(text, 'codex-model-list', 'C:\\Users\\Test\\.codex\\codex-model-list\\current');
+  assert.match(updated, /\[marketplaces\.other\][\s\S]*source = "\/tmp\/other"/);
+  assert.match(updated, /\[marketplaces\.codex-model-list\][\s\S]*source = "C:\\\\Users\\\\Test\\\\\.codex\\\\codex-model-list\\\\current"/);
+  assert.match(updated, /\[plugins\."codex-model-list@codex-model-list"\]/);
 });
