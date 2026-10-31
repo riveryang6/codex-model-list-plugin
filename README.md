@@ -32,7 +32,7 @@ Run PowerShell 7 or Windows PowerShell from the repository root:
 powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 ```
 
-The Windows installer uses the native Git checkout, a cross-platform `current.txt` pointer, and a Scheduled Task that runs the commit check and catalog sync every 30 seconds. It does not require WSL, bash, or symbolic links.
+The Windows installer uses the native Git checkout, a cross-platform `current.txt` pointer, and a Scheduled Task that runs the commit check and catalog sync every minute. It does not require WSL, bash, or symbolic links.
 
 After installation, add the marketplace and plugin with the paths printed by the installer, then restart Codex.
 
@@ -45,7 +45,7 @@ The plugin reads, on every successful sync:
 3. The credential from `~/.codex/auth.json`, using `OPENAI_API_KEY`, `CODEX_API_KEY`, or the configured provider environment variable when present.
 4. The catalog destination from the top-level `model_catalog_json` setting.
 
-For the bundled Responses compatibility proxy, `install-macos.sh` points the selected provider's `base_url` at `http://127.0.0.1:47832/v1`. The proxy forwards to the upstream URL saved during installation.
+Both installers point the selected provider's `base_url` at `http://127.0.0.1:47832/v1`. The proxy forwards to the upstream URL saved during installation, and keeps an upstream path such as `/v1` or a `codex-attachment-manager` route intact without duplicating `/v1`.
 
 ## Startup update policy
 

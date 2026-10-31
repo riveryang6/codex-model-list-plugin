@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { homedir } from 'node:os';
 
 const run = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -10,7 +11,7 @@ const DEFAULT_REPOSITORY = 'https://github.com/riveryang6/codex-model-list-plugi
 const DEFAULT_TIMEOUT_MS = 5000;
 
 function dataRoot(env = process.env) {
-  return env.CODEX_MODEL_LIST_DATA || join(env.CODEX_HOME || `${process.env.HOME}/.codex`, 'codex-model-list');
+  return env.CODEX_MODEL_LIST_DATA || join(env.CODEX_HOME || join(homedir(), '.codex'), 'codex-model-list');
 }
 
 function readState(path) {

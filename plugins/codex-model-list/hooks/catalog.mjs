@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFile
 import { dirname, join } from 'node:path';
 
 export const MANAGED_DESCRIPTION = 'Model exposed through the active Codex provider.';
+export const LEGACY_MANAGED_DESCRIPTION = 'Lifaplus model exposed through the configured OpenAI-compatible Responses API.';
 export const ALLOWED_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
 function normalizeId(id) {
@@ -102,6 +103,10 @@ function effortsFor(id, pi, existing, fallback) {
       if (!has || map[level] === null) continue;
       result.push(level === 'off' ? 'none' : level);
     }
+    // Keep the Sol ultra tier available across upstream Sol revisions, even
+    // when the provider metadata has not added the new ID yet.
+    if (/^gpt-.*-sol$/i.test(id) && !result.includes('ultra')) result.push('ultra');
+    if (existing?.supported_reasoning_levels?.some(item => item.effort === 'ultra') && !result.includes('ultra')) result.push('ultra');
     return result;
   }
   if (/(^gpt-image|grok-imagine|^wan\d.*-image|embedding|non-reasoning)/i.test(id)) return [];
@@ -110,16 +115,19 @@ function effortsFor(id, pi, existing, fallback) {
     ?? [];
 }
 
-function effortDefinitions(efforts, descriptions) {
-  return [...new Set(efforts)].filter(effort => ALLOWED_EFFORTS.includes(effort)).map(effort => ({
-    effort,
-    description: descriptions[effort] || `Reasoning effort: ${effort}`,
-  }));
+function effortDefinitions(efforts, descriptions, existing) {
+  const installed = new Map((existing?.supported_reasoning_levels ?? []).map(definition => [definition.effort, definition.description]));
+  return [...new Set(efforts)].filter(effort => ALLOWED_EFFORTS.includes(effort)).map(effort => {
+    const description = installed.get(effort) || descriptions[effort] || (effort === 'ultra'
+      ? 'Maximum reasoning with automatic task delegation'
+      : `Reasoning effort: ${effort}`);
+    return { effort, description };
+  });
 }
 
 function updateMetadata(model, remote, pi, existing, fallback, descriptions, state) {
   const efforts = effortsFor(model.slug, pi, existing, fallback);
-  const definitions = effortDefinitions(efforts, descriptions);
+  const definitions = effortDefinitions(efforts, descriptions, existing);
   if (JSON.stringify(model.supported_reasoning_levels) !== JSON.stringify(definitions)) {
     model.supported_reasoning_levels = definitions;
     state.changed = true;
@@ -133,10 +141,16 @@ function updateMetadata(model, remote, pi, existing, fallback, descriptions, sta
     model.default_reasoning_level = ['medium', 'high', 'low'].find(value => efforts.includes(value)) || efforts[0];
     state.changed = true;
   }
-  const supportsReasoningSummary = pi?.reasoning === true;
+  // The gateway is not required to accept the summary parameter; preserve what
+  // the installed catalog already advertises and only enable it when provider
+  // metadata explicitly says so.
+  const supportsReasoningSummary = existing?.supports_reasoning_summary_parameter === true
+    || pi?.compat?.supportsReasoningSummary === true;
   setProperty(model, 'supports_reasoning_summary_parameter', supportsReasoningSummary, state);
-  if (supportsReasoningSummary && (!model.default_reasoning_summary || model.default_reasoning_summary === 'none')) {
+  if (supportsReasoningSummary && !existing && !model.default_reasoning_summary) {
     setProperty(model, 'default_reasoning_summary', 'auto', state);
+  } else if (!supportsReasoningSummary && model.default_reasoning_summary !== 'none') {
+    setProperty(model, 'default_reasoning_summary', 'none', state);
   }
   const context = contextLimit(remote, pi, existing, fallback);
   if (model.context_window !== context) {
@@ -173,8 +187,8 @@ function updateMetadata(model, remote, pi, existing, fallback, descriptions, sta
   }
 }
 
-function isManagedModel(model) {
-  return model?.description === MANAGED_DESCRIPTION;
+export function isManagedModel(model) {
+  return model?.description === MANAGED_DESCRIPTION || model?.description === LEGACY_MANAGED_DESCRIPTION;
 }
 
 export function buildCatalog(catalog, templateCatalog, remoteModels, providerIndex = new Map()) {
@@ -182,7 +196,7 @@ export function buildCatalog(catalog, templateCatalog, remoteModels, providerInd
   const templateModels = Array.isArray(templateCatalog?.models) ? templateCatalog.models : [];
   const metadataModels = [...oldModels, ...templateModels].filter(isManagedModel);
   const descriptions = {};
-  for (const model of metadataModels) {
+  for (const model of [...oldModels, ...templateModels]) {
     for (const definition of model.supported_reasoning_levels ?? []) {
       if (ALLOWED_EFFORTS.includes(definition.effort) && !descriptions[definition.effort]) {
         descriptions[definition.effort] = definition.description;
@@ -193,7 +207,9 @@ export function buildCatalog(catalog, templateCatalog, remoteModels, providerInd
   if (!template) throw new Error('No managed model template is available.');
   const byId = new Map(metadataModels.map(model => [String(model.slug), model]));
   const byNormalized = new Map(metadataModels.map(model => [normalizeId(model.slug), model]));
-  let nextPriority = 99;
+  let nextPriority = metadataModels.length
+    ? Math.max(99, ...metadataModels.map(model => Number(model.priority) || 0)) + 1
+    : 99;
   const refreshedModels = [];
   const seenRemoteIds = new Set();
   const state = { changed: false };
@@ -201,8 +217,9 @@ export function buildCatalog(catalog, templateCatalog, remoteModels, providerInd
     const id = String(remote.id).trim();
     if (!id || seenRemoteIds.has(id)) continue;
     seenRemoteIds.add(id);
+    const existing = byId.get(id) ?? existingFallback(id, byId, byNormalized);
     const fallback = existingFallback(id, byId, byNormalized);
-    const model = JSON.parse(JSON.stringify({
+    const model = JSON.parse(JSON.stringify(existing ?? {
       ...template,
       slug: id,
       display_name: id,
@@ -212,7 +229,9 @@ export function buildCatalog(catalog, templateCatalog, remoteModels, providerInd
       supported_in_api: true,
       input_modalities: ['text'],
     }));
-    updateMetadata(model, remote, getPiModel(id, providerIndex), null, fallback, descriptions, state);
+    model.slug = id;
+    if (!model.display_name) model.display_name = id;
+    updateMetadata(model, remote, getPiModel(id, providerIndex), existing, fallback, descriptions, state);
     refreshedModels.push(model);
   }
   return { ...(catalog ?? templateCatalog), models: refreshedModels };

@@ -1,6 +1,6 @@
 {
   "name": "codex-model-list",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Sync the model catalog from the active Codex provider and keep custom tools compatible.",
   "interface": {
     "displayName": "Codex Model List",

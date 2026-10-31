@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCatalog, MANAGED_DESCRIPTION } from '../plugins/codex-model-list/hooks/catalog.mjs';
+import { buildCatalog, isManagedModel, LEGACY_MANAGED_DESCRIPTION, MANAGED_DESCRIPTION } from '../plugins/codex-model-list/hooks/catalog.mjs';
 
 function templateModel(slug = 'template') {
   return {
@@ -48,8 +48,39 @@ test('provider metadata controls reasoning, image input and summary support', ()
   );
   const model = result.models[0];
   assert.deepEqual(model.supported_reasoning_levels.map(item => item.effort), ['low', 'high', 'max']);
-  assert.equal(model.default_reasoning_summary, 'auto');
-  assert.equal(model.supports_reasoning_summary_parameter, true);
+  assert.equal(model.default_reasoning_summary, 'none');
+  assert.equal(model.supports_reasoning_summary_parameter, false);
   assert.deepEqual(model.input_modalities, ['text', 'image']);
   assert.equal(model.context_window, 500000);
+});
+
+test('an installed managed catalog keeps its full model messages and per-model settings', () => {
+  const existing = {
+    models: [{
+      ...templateModel('kept-model'),
+      description: LEGACY_MANAGED_DESCRIPTION,
+      default_reasoning_level: 'medium',
+      supported_reasoning_levels: [
+        { effort: 'low', description: 'Fast responses with lighter reasoning' },
+        { effort: 'medium', description: 'Balances speed and reasoning depth' },
+        { effort: 'high', description: 'Greater reasoning depth' },
+      ],
+      model_messages: { instructions_template: 'installed instructions', instructions_variables: {}, approvals: null },
+      input_modalities: ['text', 'image'],
+      context_window: 1048576,
+      max_context_window: 1048576,
+      auto_compact_token_limit: 786432,
+      supports_reasoning_summary_parameter: false,
+      default_reasoning_summary: 'none',
+    }],
+  };
+  const result = buildCatalog(existing, { models: [templateModel()] }, [{ id: 'kept-model', max_input_tokens: 1048576 }]);
+  const model = result.models[0];
+  assert.equal(model.model_messages.instructions_template, 'installed instructions');
+  assert.equal(model.default_reasoning_level, 'medium');
+  assert.equal(model.context_window, 1048576);
+  assert.equal(model.auto_compact_token_limit, 786432);
+  assert.equal(model.supports_reasoning_summary_parameter, false);
+  assert.equal(model.default_reasoning_summary, 'none');
+  assert.equal(isManagedModel(model), true);
 });

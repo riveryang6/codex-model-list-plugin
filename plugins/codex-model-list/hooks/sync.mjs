@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCatalog, piIndex, writeCatalog } from './catalog.mjs';
+import { buildCatalog, isManagedModel, piIndex, writeCatalog } from './catalog.mjs';
 import {
   codexHome,
   readAuth,
@@ -19,7 +19,7 @@ const MANAGED_TEMPLATE = join(ROOT, 'template', 'catalog.json');
 
 function log(home, message) {
   try {
-    const dataRoot = join(home, 'codex-model-list');
+    const dataRoot = process.env.CODEX_MODEL_LIST_DATA || join(home, 'codex-model-list');
     mkdirSync(dataRoot, { recursive: true });
     writeFileSync(join(dataRoot, 'sync.log'), `${new Date().toISOString()} ${message}\n`, { encoding: 'utf8', flag: 'a' });
   } catch {
@@ -30,7 +30,7 @@ function log(home, message) {
 function providerDataDir() {
   const bundled = join(PI_ROOT, '1.4.0', 'package', 'dist', 'providers', 'data');
   if (existsSync(bundled)) return bundled;
-  const cache = join(codexHome(), 'codex-model-list', 'pi-ai');
+  const cache = join(process.env.CODEX_MODEL_LIST_DATA || join(codexHome(), 'codex-model-list'), 'pi-ai');
   if (!existsSync(cache)) return null;
   const versions = readdirSync(cache).filter(name => existsSync(join(cache, name, 'package', 'dist', 'providers', 'data'))).sort().reverse();
   return versions.length ? join(cache, versions[0], 'package', 'dist', 'providers', 'data') : null;
@@ -69,17 +69,16 @@ export async function sync({ home = codexHome(), env = process.env } = {}) {
   const credential = resolveCredential(auth, provider, env);
   if (!credential) throw new Error('No Codex API credential is configured.');
   const catalogPath = resolveCatalogPath(config, home);
-  const template = existsSync(MANAGED_TEMPLATE)
-    ? readJSON(MANAGED_TEMPLATE)
-    : existsSync(catalogPath)
-      ? readJSON(catalogPath)
-      : null;
+  const existing = existsSync(catalogPath) ? readJSON(catalogPath) : null;
+  const bundled = existsSync(MANAGED_TEMPLATE) ? readJSON(MANAGED_TEMPLATE) : null;
+  // Keep the installed catalog's full model messages and per-model settings;
+  // the bundled template only seeds a fresh installation.
+  const template = existing?.models?.some(isManagedModel) ? existing : bundled;
   if (!template) throw new Error('No managed model template is available.');
-  const existing = existsSync(catalogPath) ? readJSON(catalogPath) : template;
   const remoteModels = await fetchModels(upstreamProvider, credential);
   const dataDir = providerDataDir();
   const index = piIndex(dataDir);
-  const nextCatalog = buildCatalog(existing, template, remoteModels, index);
+  const nextCatalog = buildCatalog(existing ?? template, template, remoteModels, index);
   writeCatalog(catalogPath, nextCatalog);
   log(home, `Synced ${remoteModels.length} models from ${upstream}; credential ${credential.source}.`);
   return { catalogPath, provider: upstreamProvider, credentialSource: credential.source, modelCount: remoteModels.length };

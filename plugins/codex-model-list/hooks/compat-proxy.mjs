@@ -16,13 +16,31 @@ function codexHome() {
 }
 
 function upstreamFor(codexHomePath) {
-  const saved = join(codexHomePath, 'codex-model-list', UPSTREAM_FILE);
+  const dataRoot = process.env.CODEX_MODEL_LIST_DATA || join(codexHomePath, 'codex-model-list');
+  const saved = join(dataRoot, UPSTREAM_FILE);
   if (existsSync(saved)) {
     const value = readFileSync(saved, 'utf8').trim();
     if (value) return value.replace(/\/+$/, '');
   }
   const config = readConfig(codexHomePath);
   return resolveUpstream(resolveProvider(config));
+}
+
+// Codex appends the API path to the provider base URL. An upstream that already
+// carries /v1 must not receive it twice. A codex-attachment-manager route is a
+// special case: its registered target already includes /v1, so the route must
+// receive the path relative to that target.
+export function upstreamTarget(baseUrl, requestUrl) {
+  const base = new URL(baseUrl);
+  const basePath = base.pathname.replace(/\/+$/, '');
+  const split = requestUrl.indexOf('?');
+  let requestPath = split < 0 ? requestUrl : requestUrl.slice(0, split);
+  const query = split < 0 ? '' : requestUrl.slice(split);
+  if (basePath.includes('/__cam/routes/') || basePath.endsWith('/v1')) {
+    if (requestPath === '/v1' || requestPath.startsWith('/v1/')) requestPath = requestPath.slice(3) || '/';
+  }
+  if (!requestPath.startsWith('/')) requestPath = `/${requestPath}`;
+  return `${base.origin}${basePath}${requestPath}${query}`;
 }
 
 function catalogFor(codexHomePath) {
@@ -235,7 +253,7 @@ export function startServer({ port = PORT, upstreamUrl, codexHome: home = codexH
         if (value !== undefined) headers.set(key, Array.isArray(value) ? value.join(', ') : value);
       }
       headers.set('accept-encoding', 'identity');
-      const upstream = await fetch(resolvedUpstream + req.url, {
+      const upstream = await fetch(upstreamTarget(resolvedUpstream, req.url), {
         method: req.method, headers, signal: abort.signal,
         body: ['GET', 'HEAD'].includes(req.method) ? undefined : payload,
         redirect: 'error',

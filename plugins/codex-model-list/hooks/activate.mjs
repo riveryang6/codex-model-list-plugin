@@ -7,7 +7,9 @@ const dataRoot = process.env.CODEX_MODEL_LIST_DATA || join(home, 'codex-model-li
 const current = activePluginRoot(home);
 if (!current) throw new Error('No active plugin snapshot is available.');
 const pluginSource = join(current, 'plugins', 'codex-model-list');
-const cacheRoot = join(home, 'plugins', 'cache', 'codex-model-list', 'codex-model-list', '1.0.0');
+const manifest = JSON.parse(readFileSync(join(pluginSource, '.codex-plugin', 'plugin.json'), 'utf8'));
+if (!manifest.version) throw new Error(`The active plugin manifest has no version: ${pluginSource}`);
+const cacheRoot = join(home, 'plugins', 'cache', 'codex-model-list', 'codex-model-list', manifest.version);
 
 function replaceDirectory(source, target) {
   const temporary = `${target}.${process.pid}.tmp`;
