@@ -20,7 +20,6 @@ fi
 mkdir -p "${DATA_ROOT}" "${CODEX_HOME}"
 chmod +x "${ROOT}/plugins/codex-model-list/hooks/session-start.sh"
 chmod +x "${ROOT}/plugins/codex-model-list/hooks/sync.sh"
-chmod +x "${ROOT}/plugins/codex-model-list/hooks/ensure-proxy.sh"
 chmod +x "${ROOT}/plugins/codex-model-list/hooks/register-launchd-macos.sh"
 
 commit="$(git -C "${ROOT}" rev-parse HEAD 2>/dev/null || echo local)"

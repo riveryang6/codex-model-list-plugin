@@ -1,8 +1,8 @@
 # Codex Model List Plugin
 
-Codex plugin that builds its model catalog from the Codex provider currently selected in `~/.codex/config.toml` and the credentials in `~/.codex/auth.json`.
+Codex plugin that builds its model catalog directly from the Codex provider currently selected in `~/.codex/config.toml` and the credentials in `~/.codex/auth.json`.
 
-The plugin does not ship an upstream URL, API key, model snapshot, or user configuration. It derives the model-list endpoint from the active provider and uses the configured Codex credential only in memory.
+The plugin does not ship an upstream URL, API key, model snapshot, or user configuration. It runs no local proxy and never rewrites `base_url`: every sync re-reads the active provider from `config.toml` and calls that provider's model endpoint directly. Switching providers takes effect on the next sync.
 
 ## Requirements
 
@@ -22,7 +22,7 @@ codex plugin marketplace add "$PWD"
 codex plugin add codex-model-list@codex-model-list
 ```
 
-`install-macos.sh` registers the proxy and commit updater as launchd agents. The plugin intentionally has no Codex lifecycle-hook declaration, so it does not require repeated hook trust prompts.
+`install-macos.sh` registers the commit updater as a launchd agent. The plugin intentionally has no Codex lifecycle-hook declaration, so it does not require repeated hook trust prompts.
 
 ### Windows
 
@@ -45,7 +45,7 @@ The plugin reads, on every successful sync:
 3. The credential from `~/.codex/auth.json`, using `OPENAI_API_KEY`, `CODEX_API_KEY`, or the configured provider environment variable when present.
 4. The catalog destination from the top-level `model_catalog_json` setting.
 
-Both installers point the selected provider's `base_url` at `http://127.0.0.1:47832/v1`. The proxy forwards to the upstream URL saved during installation, and keeps an upstream path such as `/v1` or a `codex-attachment-manager` route intact without duplicating `/v1`.
+Reinstalling a release that used the retired local proxy restores the original endpoint first; otherwise `base_url` is left exactly as configured.
 
 ## Startup update policy
 
@@ -60,7 +60,6 @@ The five-second budget covers only `git ls-remote`. A fetch after a successful c
 ## Files
 
 - `plugins/codex-model-list/hooks/sync.mjs`: provider discovery and catalog construction
-- `plugins/codex-model-list/hooks/compat-proxy.mjs`: Responses compatibility adapter
 - `plugins/codex-model-list/hooks/update.mjs`: commit-based updater
 - `plugins/codex-model-list/hooks/session-start.sh`: startup entry point
 - `install-macos.sh`: installs the plugin runtime and launchd helper

@@ -10,7 +10,6 @@ import {
   resolveCredential,
   resolveModelsEndpoint,
   resolveProvider,
-  resolveUpstream,
 } from './config.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -59,12 +58,10 @@ async function fetchModels(provider, credential) {
 }
 
 export async function sync({ home = codexHome(), env = process.env } = {}) {
+  // Read the active provider on every run: a provider switch in config.toml
+  // takes effect at the next sync without reinstalling anything.
   const config = readConfig(home);
   const provider = resolveProvider(config);
-  const savedPath = join(home, 'codex-model-list', 'upstream-url');
-  const savedUpstream = existsSync(savedPath) ? readFileSync(savedPath, 'utf8').trim() : null;
-  const upstream = resolveUpstream(provider, savedUpstream);
-  const upstreamProvider = { ...provider, baseUrl: upstream };
   const auth = readAuth(home);
   const credential = resolveCredential(auth, provider, env);
   if (!credential) throw new Error('No Codex API credential is configured.');
@@ -75,13 +72,13 @@ export async function sync({ home = codexHome(), env = process.env } = {}) {
   // the bundled template only seeds a fresh installation.
   const template = existing?.models?.some(isManagedModel) ? existing : bundled;
   if (!template) throw new Error('No managed model template is available.');
-  const remoteModels = await fetchModels(upstreamProvider, credential);
+  const remoteModels = await fetchModels(provider, credential);
   const dataDir = providerDataDir();
   const index = piIndex(dataDir);
   const nextCatalog = buildCatalog(existing ?? template, template, remoteModels, index);
   writeCatalog(catalogPath, nextCatalog);
-  log(home, `Synced ${remoteModels.length} models from ${upstream}; credential ${credential.source}.`);
-  return { catalogPath, provider: upstreamProvider, credentialSource: credential.source, modelCount: remoteModels.length };
+  log(home, `Synced ${remoteModels.length} models from ${resolveModelsEndpoint(provider)}; credential ${credential.source}.`);
+  return { catalogPath, provider, credentialSource: credential.source, modelCount: remoteModels.length };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

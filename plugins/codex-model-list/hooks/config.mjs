@@ -77,11 +77,6 @@ export function resolveProvider(config) {
   };
 }
 
-export function resolveUpstream(provider, savedUpstream = null) {
-  if (savedUpstream) return String(savedUpstream).replace(/\/+$/, '');
-  return provider.baseUrl;
-}
-
 export function activePluginRoot(home = codexHome()) {
   const dataRoot = process.env.CODEX_MODEL_LIST_DATA || join(home, 'codex-model-list');
   const pointer = join(dataRoot, 'current.txt');

@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -12,8 +12,31 @@ import {
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const home = codexHome();
 const dataRoot = process.env.CODEX_MODEL_LIST_DATA || join(home, 'codex-model-list');
+// The plugin never routes Codex through itself. These are the ports older
+// releases of this plugin used; an install restores the original endpoint.
+const RETIRED_PROXY = /^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):4783[12](?:\/|$)/i;
 
-export function install({ sourceRoot = PLUGIN_ROOT, homePath = home, dataPath = dataRoot, commit = 'local', upstream = null } = {}) {
+// codex-attachment-manager keeps the endpoint it replaced beside its route.
+export function recordedUpstream(text, providerName) {
+  const escaped = providerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const header = new RegExp(`^\\[model_providers\\.${escaped}\\]\\s*$`, 'm').exec(text);
+  if (!header) return null;
+  const rest = text.slice(header.index + header[0].length);
+  const next = rest.search(/^\[/m);
+  const section = next >= 0 ? rest.slice(0, next) : rest;
+  const line = /^#\s*original:\s*(".*")\s*$/m.exec(section);
+  if (!line) return null;
+  try {
+    const assignment = /^base_url\s*=\s*(".*"|'.*')\s*$/.exec(JSON.parse(line[1]));
+    if (!assignment) return null;
+    const raw = assignment[1];
+    return raw.startsWith("'") ? raw.slice(1, -1) : JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function install({ sourceRoot = PLUGIN_ROOT, homePath = home, dataPath = dataRoot, commit = 'local' } = {}) {
   mkdirSync(join(dataPath, 'versions'), { recursive: true });
   const checkout = join(dataPath, 'versions', commit);
   if (!existsSync(join(checkout, 'plugins', 'codex-model-list', '.codex-plugin', 'plugin.json'))) {
@@ -26,23 +49,28 @@ export function install({ sourceRoot = PLUGIN_ROOT, homePath = home, dataPath = 
   const config = parseConfig(text);
   const provider = resolveProvider(config);
   const savedPath = join(dataPath, 'upstream-url');
-  const realUpstream = upstream
-    || (existsSync(savedPath) ? readFileSync(savedPath, 'utf8').trim() : null)
-    || provider.baseUrl;
-  if (/^http:\/\/127\.0\.0\.1:4783[12]/.test(realUpstream)) {
-    throw new Error('The configured base_url points to a compatibility proxy.');
+  const saved = existsSync(savedPath) ? readFileSync(savedPath, 'utf8').trim() : null;
+
+  let restored = null;
+  let updated = text;
+  if (RETIRED_PROXY.test(provider.baseUrl)) {
+    const candidates = [recordedUpstream(text, provider.name), saved];
+    restored = candidates.find(value => value && !RETIRED_PROXY.test(value)) ?? null;
+    if (restored) {
+      updated = rewriteProviderBaseUrl(updated, provider.name, restored.replace(/\/+$/, ''))
+        ?? updated;
+    }
   }
-  const withProvider = rewriteProviderBaseUrl(text, provider.name, 'http://127.0.0.1:47832/v1');
-  if (!withProvider) throw new Error(`Cannot find base_url for provider ${provider.name}.`);
-  const withMarketplace = rewriteMarketplaceSource(withProvider, 'codex-model-list', checkout)
-    ?? `${withProvider.trimEnd()}\n\n[marketplaces.codex-model-list]\nsource_type = "local"\nsource = ${JSON.stringify(checkout)}\n`;
+
+  const withMarketplace = rewriteMarketplaceSource(updated, 'codex-model-list', checkout)
+    ?? `${updated.trimEnd()}\n\n[marketplaces.codex-model-list]\nsource_type = "local"\nsource = ${JSON.stringify(checkout)}\n`;
   const temporaryConfig = `${configPath}.${process.pid}.tmp`;
   writeFileSync(temporaryConfig, withMarketplace, 'utf8');
   renameSync(temporaryConfig, configPath);
-  writeFileSync(savedPath, `${realUpstream}\n`, 'utf8');
+  if (existsSync(savedPath)) rmSync(savedPath, { force: true });
   writeFileSync(join(dataPath, 'current.txt'), `${checkout}\n`, 'utf8');
   writeFileSync(join(dataPath, 'state.json'), `${JSON.stringify({ commit, installedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8');
-  return { checkout, dataRoot: dataPath, configPath, upstream: realUpstream };
+  return { checkout, dataRoot: dataPath, configPath, provider: provider.name, baseUrl: restored ?? provider.baseUrl, restored };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -54,7 +82,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const result = install({
     sourceRoot: value('--source') || PLUGIN_ROOT,
     commit: value('--commit') || 'local',
-    upstream: value('--upstream') || null,
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }

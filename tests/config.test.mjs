@@ -63,9 +63,9 @@ base_url = "https://other.test/v1"
 base_url = "https://example.test/v1"
 wire_api = "responses"
 `;
-  const updated = rewriteProviderBaseUrl(text, 'custom', 'http://127.0.0.1:47831/v1');
+  const updated = rewriteProviderBaseUrl(text, 'custom', 'https://restored.example/v1');
   assert.match(updated, /\[model_providers\.other\][\s\S]*base_url = "https:\/\/other\.test\/v1"/);
-  assert.match(updated, /\[model_providers\.custom\][\s\S]*base_url = "http:\/\/127\.0\.0\.1:47831\/v1"/);
+  assert.match(updated, /\[model_providers\.custom\][\s\S]*base_url = "https:\/\/restored\.example\/v1"/);
 });
 
 test('marketplace source rewrite is scoped and preserves other sections', () => {

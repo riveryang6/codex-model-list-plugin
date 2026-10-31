@@ -1,5 +1,5 @@
 import { update } from './update.mjs';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { activePluginRoot, codexHome } from './config.mjs';
@@ -14,19 +14,6 @@ try {
 const home = codexHome();
 const root = process.env.CODEX_MODEL_LIST_DATA || join(home, 'codex-model-list');
 const current = activePluginRoot(home) || root;
-const proxyScript = join(current, 'plugins', 'codex-model-list', 'hooks', 'compat-proxy.mjs');
-const health = await fetch('http://127.0.0.1:47832/health', { signal: AbortSignal.timeout(500) }).catch(() => null);
-if (!health?.ok && existsSync(proxyScript)) {
-  const proxy = spawn(process.execPath, [proxyScript], {
-    // The updater usually runs from a short-lived scheduled task or watcher
-    // child; the proxy must outlive it and its console on every platform.
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-    env: process.env,
-  });
-  proxy.unref();
-}
 const activateScript = join(current, 'plugins', 'codex-model-list', 'hooks', 'activate.mjs');
 if (existsSync(activateScript)) {
   spawnSync(process.execPath, [activateScript], { stdio: 'inherit', env: process.env });
