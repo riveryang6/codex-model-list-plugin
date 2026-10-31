@@ -98,7 +98,12 @@ if (-not $TaskRegistered) {
 try { `$lock = [System.IO.File]::Open(`$lockPath, 'OpenOrCreate', 'ReadWrite', 'None') } catch { exit 0 }
 try {
   while (`$true) {
-    & '$($Node.Replace("'", "''"))' '$($UpdateScript.Replace("'", "''"))' | Out-Null
+    # Follow the version pointer: the updater replaces it on every new commit.
+    `$current = (Get-Content -LiteralPath (Join-Path `$PSScriptRoot 'current.txt') -Raw).Trim()
+    `$script = Join-Path `$current 'plugins\codex-model-list\hooks\update-and-sync.mjs'
+    if (Test-Path -LiteralPath `$script) {
+      & '$($Node.Replace("'", "''"))' `$script | Out-Null
+    }
     Start-Sleep -Seconds 60
   }
 } finally { `$lock.Dispose() }
