@@ -2,6 +2,25 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
+// macOS launchd and app-bundled shells start with a minimal PATH that usually
+// has no node, so shell entry points probe these locations as a fallback.
+export const NODE_CANDIDATES = [
+  '/opt/homebrew/bin/node',
+  '/usr/local/bin/node',
+  '/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node',
+];
+
+export function resolveNodeBinary({ env = process.env, exists = existsSync, candidates = NODE_CANDIDATES } = {}) {
+  if (env.CODEX_MODEL_LIST_NODE) return env.CODEX_MODEL_LIST_NODE;
+  const path = String(env.PATH ?? '');
+  for (const directory of path.split(':')) {
+    if (!directory) continue;
+    const candidate = join(directory, 'node');
+    if (exists(candidate)) return candidate;
+  }
+  return candidates.find(candidate => exists(candidate)) ?? null;
+}
+
 export function codexHome(env = process.env) {
   return env.CODEX_HOME || join(homedir(), '.codex');
 }

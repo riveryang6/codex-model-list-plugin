@@ -5,6 +5,7 @@ import {
   resolveCatalogPath,
   resolveCredential,
   resolveModelsEndpoint,
+  resolveNodeBinary,
   resolveProvider,
   rewriteMarketplaceSource,
   rewriteProviderBaseUrl,
@@ -50,6 +51,15 @@ test('credential precedence follows provider env, Codex env, then auth.json', ()
 
 test('no credential returns null', () => {
   assert.equal(resolveCredential({}, {}, {}), null);
+});
+
+test('node resolves from PATH, then from known macOS install locations', () => {
+  const existing = new Set(['/custom/bin/node', '/opt/homebrew/bin/node']);
+  const exists = path => existing.has(path);
+  assert.equal(resolveNodeBinary({ env: { PATH: '/custom/bin:/usr/bin' }, exists }), '/custom/bin/node');
+  assert.equal(resolveNodeBinary({ env: { PATH: '/usr/bin:/bin' }, exists }), '/opt/homebrew/bin/node');
+  assert.equal(resolveNodeBinary({ env: { PATH: '', CODEX_MODEL_LIST_NODE: '/explicit/node' }, exists }), '/explicit/node');
+  assert.equal(resolveNodeBinary({ env: { PATH: '' }, exists: () => false }), null);
 });
 
 test('base URL rewrite is scoped to the selected provider section', () => {

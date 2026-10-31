@@ -6,6 +6,16 @@ CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
 DATA_ROOT="${CODEX_MODEL_LIST_DATA:-${CODEX_HOME}/codex-model-list}"
 LAUNCH_AGENTS="${HOME}/Library/LaunchAgents"
 NODE_BIN="${CODEX_MODEL_LIST_NODE:-$(command -v node || true)}"
+if [[ -z "${NODE_BIN}" ]]; then
+  # launchd agents start with a minimal PATH that often has no node.
+  for candidate in /opt/homebrew/bin/node /usr/local/bin/node \
+    "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"; do
+    if [[ -x "${candidate}" ]]; then
+      NODE_BIN="${candidate}"
+      break
+    fi
+  done
+fi
 RETIRED_PROXY_LABEL="com.riveryang6.codex-model-list.proxy"
 SYNC_LABEL="com.riveryang6.codex-model-list.sync"
 SYNC_SCRIPT="${SCRIPT_DIR}/update-and-sync.mjs"

@@ -10,6 +10,11 @@ The plugin does not ship an upstream URL, API key, model snapshot, or user confi
 - Node.js 20 or newer
 - macOS for the included launchd helpers
 
+Node discovery does not rely on the inherited `PATH`. The shell entry points
+check `/opt/homebrew/bin/node`, `/usr/local/bin/node`, and the Node bundled
+inside the ChatGPT desktop app, so they keep working from launchd, a login
+shell, or the app's own terminal. Set `CODEX_MODEL_LIST_NODE` to override.
+
 ## Install
 
 ### macOS
