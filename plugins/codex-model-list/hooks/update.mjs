@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
@@ -29,6 +29,21 @@ async function git(args, cwd, timeout) {
     maxBuffer: 1024 * 1024,
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
   });
+}
+
+// The macOS install keeps a "current" symlink next to current.txt. Switch it
+// atomically so readers never see a half-updated pointer.
+export function switchCurrentLink(root, checkout) {
+  const link = join(root, 'current');
+  const temporary = join(root, `.current-${process.pid}.tmp`);
+  try {
+    rmSync(temporary, { recursive: true, force: true });
+    symlinkSync(checkout, temporary);
+    renameSync(temporary, link);
+  } catch {
+    // Windows and filesystems without symlink support rely on current.txt.
+    rmSync(temporary, { recursive: true, force: true });
+  }
 }
 
 export function parseRemoteHead(text, branch = 'main') {
@@ -79,6 +94,7 @@ export async function update({
   const temporaryPointer = join(root, `.current-${process.pid}.tmp`);
   writeFileSync(temporaryPointer, `${checkout}\n`, 'utf8');
   renameSync(temporaryPointer, currentFile);
+  switchCurrentLink(root, checkout);
   const nextState = { commit: actual, installedAt: new Date().toISOString() };
   const temporary = `${statePath}.${process.pid}.tmp`;
   writeFileSync(temporary, `${JSON.stringify(nextState, null, 2)}\n`, 'utf8');
