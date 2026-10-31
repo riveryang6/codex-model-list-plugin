@@ -94,9 +94,12 @@ takes precedence over pi.dev, since it describes the endpoint actually in use.
 
 The background updater checks the latest remote commit with a five-second timeout.
 
-- A different commit triggers a shallow fetch into `~/.codex/codex-model-list/versions/<commit>` and an atomic switch of the `current` symlink.
-- A timeout, network failure, missing Git, or a dirty local checkout leaves the installed version untouched.
+- A different commit triggers a shallow fetch into `~/.codex/codex-model-list/versions/<commit>`, refreshes the Codex plugin cache, and only then switches `current.txt`/the `current` symlink. An interrupted update therefore leaves the previous version fully usable.
+- A timeout, network failure, or a dirty local checkout leaves the installed version untouched.
+- Git is resolved from `CODEX_MODEL_LIST_GIT`, `PATH`, the standard Git install directories, and the Codex runtime directories. Codex starts background tasks with a reduced PATH, so relying on a bare `git` command would make updates silently stop.
 - Versions are tracked by commit SHA, not by the plugin manifest version.
+
+On Windows the installer registers an unelevated interactive scheduled task and starts it immediately, so the updater begins without waiting for a logout. If Task Scheduler is unavailable it falls back to the per-user Startup watcher; that watcher still only triggers at the next sign-in, so the scheduled task is preferred.
 
 The five-second budget covers only `git ls-remote`. A fetch after a successful check may take longer; it runs in a separate background process, so Codex startup is never blocked.
 

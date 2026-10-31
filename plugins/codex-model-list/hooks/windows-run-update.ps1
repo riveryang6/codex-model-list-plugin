@@ -20,6 +20,60 @@ function Write-RunnerLog([string]$Message) {
   }
 }
 
+function Find-Git {
+  $candidates = [System.Collections.Generic.List[string]]::new()
+  if ($env:CODEX_MODEL_LIST_GIT) {
+    $candidates.Add($env:CODEX_MODEL_LIST_GIT)
+  }
+
+  if ($env:Path) {
+    foreach ($directory in $env:Path.Split([System.IO.Path]::PathSeparator)) {
+      if ($directory) {
+        $candidates.Add((Join-Path $directory.Trim() "git.exe"))
+      }
+    }
+  }
+
+  $command = Get-Command git.exe -ErrorAction SilentlyContinue
+  if (-not $command) {
+    $command = Get-Command git -ErrorAction SilentlyContinue
+  }
+  if ($command -and $command.Source) {
+    $candidates.Add($command.Source)
+  }
+
+  $knownPaths = @(
+    (Join-Path $env:ProgramFiles 'Git\cmd\git.exe'),
+    (Join-Path ${env:ProgramFiles(x86)} 'Git\cmd\git.exe'),
+    (Join-Path $env:LOCALAPPDATA 'Programs\Git\cmd\git.exe'),
+    (Join-Path $env:LOCALAPPDATA 'Programs\LobsterAI\resources\mingit\cmd\git.exe'),
+    (Join-Path $HOME 'scoop\shims\git.exe'),
+    (Join-Path $HOME '.volta\bin\git.exe')
+  )
+  foreach ($path in $knownPaths) {
+    if ($path) {
+      $candidates.Add($path)
+    }
+  }
+
+  # Codex updates can replace or remove its bundled runtime directory. Look
+  # for every installed runtime on each pass instead of remembering one path.
+  $runtimeRoot = Join-Path $HOME ".cache\codex-runtimes"
+  if (Test-Path -LiteralPath $runtimeRoot) {
+    Get-ChildItem -LiteralPath $runtimeRoot -Directory -ErrorAction SilentlyContinue |
+      ForEach-Object {
+        $candidates.Add((Join-Path $_.FullName "dependencies\native\git\cmd\git.exe"))
+      }
+  }
+
+  foreach ($candidate in $candidates) {
+    if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+      return $candidate
+    }
+  }
+  return $null
+}
+
 function Find-Node {
   $candidates = [System.Collections.Generic.List[string]]::new()
   if ($env:CODEX_MODEL_LIST_NODE) {
@@ -83,6 +137,14 @@ try {
   if ($major -lt 20) {
     throw "Node.js 20 or newer is required; found $major."
   }
+
+  $git = Find-Git
+  if (-not $git) {
+    throw "Git was not found. Install Git or set CODEX_MODEL_LIST_GIT."
+  }
+  # The updater runs in a fresh background PowerShell whose PATH may omit Git.
+  # Export the path we resolved so Node does not have to repeat the lookup.
+  $env:CODEX_MODEL_LIST_GIT = $git
 
   $pointer = Join-Path $DataRoot "current.txt"
   if (-not (Test-Path -LiteralPath $pointer -PathType Leaf)) {

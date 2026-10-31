@@ -114,10 +114,12 @@ $TaskArguments = "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -Execut
 $Action = New-ScheduledTaskAction -Execute $Shell -Argument $TaskArguments
 $Trigger = New-ScheduledTaskTrigger -AtLogOn
 $Interval = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes ([Math]::Max(1, $SyncIntervalMinutes)))
+$Principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
 $TaskRegistered = $false
 try {
-  Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger @($Trigger, $Interval) -Settings $Settings -Force -ErrorAction Stop | Out-Null
+  Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger @($Trigger, $Interval) -Principal $Principal -Settings $Settings -Force -ErrorAction Stop | Out-Null
+  Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
   $TaskRegistered = $true
 } catch {
   Write-Warning "Task Scheduler registration failed; installing a per-user startup fallback. $($_.Exception.Message)"
