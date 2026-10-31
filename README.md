@@ -49,13 +49,13 @@ For the bundled Responses compatibility proxy, `install-macos.sh` points the sel
 
 ## Startup update policy
 
-The session-start hook checks the latest remote commit with a five-second timeout.
+The background updater checks the latest remote commit with a five-second timeout.
 
 - A different commit triggers a shallow fetch into `~/.codex/codex-model-list/versions/<commit>` and an atomic switch of the `current` symlink.
 - A timeout, network failure, missing Git, or a dirty local checkout leaves the installed version untouched.
 - Versions are tracked by commit SHA, not by the plugin manifest version.
 
-The five-second budget covers only `git ls-remote`. A fetch after a successful check may take longer; it runs in a detached updater process, so Codex startup is never blocked.
+The five-second budget covers only `git ls-remote`. A fetch after a successful check may take longer; it runs in a separate background process, so Codex startup is never blocked.
 
 ## Files
 
