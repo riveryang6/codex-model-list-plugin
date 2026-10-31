@@ -8,7 +8,7 @@ import { readConfig, resolveProvider, resolveUpstream } from './config.mjs';
 
 const VERSION = '1.0.0';
 const HOST = '127.0.0.1';
-const PORT = 47831;
+const PORT = 47832;
 const UPSTREAM_FILE = 'upstream-url';
 
 function codexHome() {

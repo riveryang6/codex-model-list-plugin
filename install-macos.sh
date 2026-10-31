@@ -35,7 +35,7 @@ if [[ -d "${ROOT}/.git" ]]; then
 fi
 
 "${NODE_BIN}" - "${CODEX_HOME}" "${DATA_ROOT}" <<'NODE'
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseConfig, resolveProvider, rewriteProviderBaseUrl } from './plugins/codex-model-list/hooks/config.mjs';
 
@@ -44,13 +44,19 @@ const configPath = join(codexHome, 'config.toml');
 const text = readFileSync(configPath, 'utf8');
 const config = parseConfig(text);
 const provider = resolveProvider(config);
-if (provider.baseUrl.startsWith('http://127.0.0.1:47831')) {
+if (provider.baseUrl.startsWith('http://127.0.0.1:47832')) {
   process.exit(0);
 }
-const updated = rewriteProviderBaseUrl(text, provider.name, 'http://127.0.0.1:47831/v1');
+const savedPath = join(dataRoot, 'upstream-url');
+const saved = existsSync(savedPath) ? readFileSync(savedPath, 'utf8').trim() : '';
+const realUpstream = saved || provider.baseUrl;
+if (realUpstream.startsWith('http://127.0.0.1:47831') || realUpstream.startsWith('http://127.0.0.1:47832')) {
+  throw new Error('The configured base_url points to a compatibility proxy. Set the real provider base_url first.');
+}
+const updated = rewriteProviderBaseUrl(text, provider.name, 'http://127.0.0.1:47832/v1');
 if (!updated) throw new Error(`Cannot find base_url for provider ${provider.name}.`);
 writeFileSync(configPath, updated, 'utf8');
-writeFileSync(join(dataRoot, 'upstream-url'), `${provider.baseUrl}\n`, 'utf8');
+writeFileSync(savedPath, `${realUpstream}\n`, 'utf8');
 NODE
 
 printf '%s\n' "Installed Codex Model List. Add the marketplace and plugin with:"

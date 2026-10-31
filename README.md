@@ -31,7 +31,7 @@ The plugin reads, on every successful sync:
 3. The credential from `~/.codex/auth.json`, using `OPENAI_API_KEY`, `CODEX_API_KEY`, or the configured provider environment variable when present.
 4. The catalog destination from the top-level `model_catalog_json` setting.
 
-For the bundled Responses compatibility proxy, `install-macos.sh` points the selected provider's `base_url` at `http://127.0.0.1:47831/v1`. The proxy forwards to the upstream URL saved during installation.
+For the bundled Responses compatibility proxy, `install-macos.sh` points the selected provider's `base_url` at `http://127.0.0.1:47832/v1`. The proxy forwards to the upstream URL saved during installation.
 
 ## Startup update policy
 
