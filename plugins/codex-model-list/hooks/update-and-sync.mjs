@@ -18,7 +18,9 @@ const proxyScript = join(current, 'plugins', 'codex-model-list', 'hooks', 'compa
 const health = await fetch('http://127.0.0.1:47832/health', { signal: AbortSignal.timeout(500) }).catch(() => null);
 if (!health?.ok && existsSync(proxyScript)) {
   const proxy = spawn(process.execPath, [proxyScript], {
-    detached: process.platform !== 'win32',
+    // The updater usually runs from a short-lived scheduled task or watcher
+    // child; the proxy must outlive it and its console on every platform.
+    detached: true,
     stdio: 'ignore',
     windowsHide: true,
     env: process.env,
