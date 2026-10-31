@@ -148,3 +148,17 @@ test('an installed managed catalog keeps its full model messages and per-model s
   assert.equal(model.default_reasoning_summary, 'auto');
   assert.equal(isManagedModel(model), true);
 });
+
+test('every catalog entry defaults to the lite Responses payload', () => {
+  const template = { models: [templateModel()] };
+  const result = buildCatalog(
+    template,
+    template,
+    [{ id: 'plain-chat' }, { id: 'grammar-chat' }, { id: 'gpt-image-2.5-flare' }],
+    new Map([
+      ['grammar-chat', { compat: { supportsOpenAIGrammarTools: true, supportsToolSearch: true } }],
+      ['gpt-image-2.5-flare', { type: 'image' }],
+    ]),
+  );
+  assert.deepEqual(result.models.map(model => model.use_responses_lite), [true, true, true]);
+});

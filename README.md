@@ -52,6 +52,13 @@ The plugin reads, on every successful sync:
 
 Reinstalling a release that used the retired local proxy restores the original endpoint first; otherwise `base_url` is left exactly as configured.
 
+## Responses payload
+
+Every generated catalog entry sets `use_responses_lite` to `true`, including
+models whose provider advertises grammar tools. The flag no longer depends on
+pi.dev metadata, so a sync always requests the lite Responses payload for the
+whole list.
+
 ## Reasoning summaries
 
 The catalog advertises `supports_reasoning_summary_parameter` for chat models so Codex asks the provider for a reasoning summary and renders it while a turn streams. The summary level comes from the top-level `model_reasoning_summary` in `config.toml` (`auto`, `concise`, `detailed`, or `none`); the catalog only supplies a default for when that setting is absent.

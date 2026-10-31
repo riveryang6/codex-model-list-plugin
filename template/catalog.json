@@ -50,7 +50,7 @@
       "supports_image_detail_original": false,
       "comp_hash": null,
       "experimental_supported_tools": [],
-      "use_responses_lite": false,
+      "use_responses_lite": true,
       "auto_review_model_override": null,
       "model_specialty": null,
       "multi_agent_version": "v2",

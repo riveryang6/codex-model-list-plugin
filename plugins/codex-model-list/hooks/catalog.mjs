@@ -225,7 +225,10 @@ function updateMetadata(model, remote, pi, existing, fallback, descriptions, sta
   setProperty(model, 'tool_mode', grammar ? 'code_mode_only' : 'direct', state);
   setProperty(model, 'supports_search_tool', pi?.compat?.supportsToolSearch === true, state);
   setProperty(model, 'shell_type', 'unified_exec', state);
-  if (!grammar) setProperty(model, 'use_responses_lite', false, state);
+  // Every catalog entry asks Codex for the lite Responses payload regardless
+  // of the upstream, so the flag is defaulted rather than derived from pi.dev
+  // grammar-tool metadata.
+  setProperty(model, 'use_responses_lite', true, state);
   if (!model.input_modalities?.includes('image') || !/^gpt-/.test(model.slug)) {
     setProperty(model, 'supports_image_detail_original', false, state);
   }
