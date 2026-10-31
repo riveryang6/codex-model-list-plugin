@@ -14,12 +14,6 @@ if [[ -z "${NODE_BIN}" ]]; then
   exit 0
 fi
 
-if [[ "${CODEX_MODEL_LIST_SKIP_UPDATE:-0}" != "1" ]]; then
-  CODEX_MODEL_LIST_REPOSITORY="${REPOSITORY}" \
-  CODEX_MODEL_LIST_BRANCH="${BRANCH}" \
-  "${NODE_BIN}" "${SCRIPT_DIR}/update.mjs" >/dev/null 2>&1 &
-fi
-
 ACTIVE_ROOT="${DATA_ROOT}/current"
 if [[ ! -f "${ACTIVE_ROOT}/plugins/codex-model-list/hooks/sync.mjs" ]]; then
   ACTIVE_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"

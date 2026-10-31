@@ -5,6 +5,5 @@
   "interface": {
     "displayName": "Codex Model List",
     "shortDescription": "Sync models from config.toml and auth.json"
-  },
-  "hooks": ["./hooks/hooks.json"]
+  }
 }

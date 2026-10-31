@@ -20,6 +20,8 @@ fi
 mkdir -p "${DATA_ROOT}" "${CODEX_HOME}"
 chmod +x "${ROOT}/plugins/codex-model-list/hooks/session-start.sh"
 chmod +x "${ROOT}/plugins/codex-model-list/hooks/sync.sh"
+chmod +x "${ROOT}/plugins/codex-model-list/hooks/ensure-proxy.sh"
+chmod +x "${ROOT}/plugins/codex-model-list/hooks/register-launchd-macos.sh"
 
 if [[ -d "${ROOT}/.git" ]]; then
   commit="$(git -C "${ROOT}" rev-parse HEAD)"
@@ -63,3 +65,4 @@ printf '%s\n' "Installed Codex Model List. Add the marketplace and plugin with:"
 printf '  codex plugin marketplace add %q --ref %q\n' "${DATA_ROOT}/current" "${BRANCH}"
 printf '%s\n' "  codex plugin add codex-model-list@codex-model-list"
 printf '%s\n' "Fully restart Codex. The startup hook checks the remote commit for five seconds and keeps the installed version on timeout."
+bash "${ROOT}/plugins/codex-model-list/hooks/register-launchd-macos.sh"
