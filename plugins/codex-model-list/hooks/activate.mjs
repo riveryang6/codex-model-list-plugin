@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import { activePluginRoot, codexHome, rewriteMarketplaceSource } from './config.mjs';
 
 const home = codexHome();
-const dataRoot = process.env.CODEX_MODEL_LIST_DATA || join(home, 'codex-model-list');
 const current = activePluginRoot(home);
 if (!current) throw new Error('No active plugin snapshot is available.');
 const pluginSource = join(current, 'plugins', 'codex-model-list');
@@ -27,6 +26,33 @@ replaceDirectory(pluginSource, cacheRoot);
 
 const configPath = join(home, 'config.toml');
 const text = readFileSync(configPath, 'utf8');
+// Codex refuses to start when a table header is malformed. The updater must
+// never rewrite such a file: leave it intact so the original error stays visible.
+function assertTableHeadersValid(source) {
+  for (const line of source.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('[')) continue;
+    if (!trimmed.endsWith(']')) {
+      throw new Error(`Refusing to rewrite config.toml with an unclosed table header: ${trimmed.slice(0, 160)}`);
+    }
+    let quote = null;
+    for (const char of trimmed) {
+      if (quote) {
+        if (char === quote) quote = null;
+      } else if (char === "'" || char === '"') {
+        quote = char;
+      }
+    }
+    if (quote) {
+      throw new Error(`Refusing to rewrite config.toml with an unclosed quote in a table header: ${trimmed.slice(0, 160)}`);
+    }
+  }
+}
+assertTableHeadersValid(text);
 const updated = rewriteMarketplaceSource(text, 'codex-model-list', current);
 if (!updated) throw new Error('Codex Model List marketplace is not configured.');
-writeFileSync(configPath, updated, 'utf8');
+if (updated !== text) {
+  const temporaryConfig = `${configPath}.${process.pid}.tmp`;
+  writeFileSync(temporaryConfig, updated, 'utf8');
+  renameSync(temporaryConfig, configPath);
+}
