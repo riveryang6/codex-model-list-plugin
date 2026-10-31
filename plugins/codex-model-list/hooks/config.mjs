@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import { homedir } from 'node:os';
 
 // macOS launchd and app-bundled shells start with a minimal PATH that usually
@@ -10,12 +10,21 @@ export const NODE_CANDIDATES = [
   '/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node',
 ];
 
-export function resolveNodeBinary({ env = process.env, exists = existsSync, candidates = NODE_CANDIDATES } = {}) {
+export function resolveNodeBinary({
+  env = process.env,
+  exists = existsSync,
+  candidates = NODE_CANDIDATES,
+  platform = process.platform,
+} = {}) {
   if (env.CODEX_MODEL_LIST_NODE) return env.CODEX_MODEL_LIST_NODE;
   const path = String(env.PATH ?? '');
-  for (const directory of path.split(':')) {
-    if (!directory) continue;
-    const candidate = join(directory, 'node');
+  const windows = platform === 'win32';
+  const paths = windows ? win32 : posix;
+  const executable = windows ? 'node.exe' : 'node';
+  for (const directory of path.split(paths.delimiter)) {
+    const trimmed = directory.trim();
+    if (!trimmed) continue;
+    const candidate = paths.join(trimmed, executable);
     if (exists(candidate)) return candidate;
   }
   return candidates.find(candidate => exists(candidate)) ?? null;

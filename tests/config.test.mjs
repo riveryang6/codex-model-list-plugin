@@ -56,10 +56,33 @@ test('no credential returns null', () => {
 test('node resolves from PATH, then from known macOS install locations', () => {
   const existing = new Set(['/custom/bin/node', '/opt/homebrew/bin/node']);
   const exists = path => existing.has(path);
-  assert.equal(resolveNodeBinary({ env: { PATH: '/custom/bin:/usr/bin' }, exists }), '/custom/bin/node');
-  assert.equal(resolveNodeBinary({ env: { PATH: '/usr/bin:/bin' }, exists }), '/opt/homebrew/bin/node');
-  assert.equal(resolveNodeBinary({ env: { PATH: '', CODEX_MODEL_LIST_NODE: '/explicit/node' }, exists }), '/explicit/node');
-  assert.equal(resolveNodeBinary({ env: { PATH: '' }, exists: () => false }), null);
+  assert.equal(resolveNodeBinary({ env: { PATH: '/custom/bin:/usr/bin' }, exists, candidates: [], platform: 'darwin' }), '/custom/bin/node');
+  assert.equal(resolveNodeBinary({ env: { PATH: '/usr/bin:/bin' }, exists, platform: 'darwin' }), '/opt/homebrew/bin/node');
+  assert.equal(resolveNodeBinary({ env: { PATH: '', CODEX_MODEL_LIST_NODE: '/explicit/node' }, exists, platform: 'darwin' }), '/explicit/node');
+  assert.equal(resolveNodeBinary({ env: { PATH: '' }, exists: () => false, platform: 'darwin' }), null);
+});
+
+test('node resolves Windows PATH entries and the bundled Codex runtime', () => {
+  const existing = new Set([
+    'C:\\Program Files\\nodejs\\node.exe',
+    'C:\\Users\\Test\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe',
+  ]);
+  const exists = path => existing.has(path);
+  assert.equal(
+    resolveNodeBinary({ env: { PATH: 'C:\\Tools; C:\\Program Files\\nodejs' }, exists, platform: 'win32' }),
+    'C:\\Program Files\\nodejs\\node.exe',
+  );
+  assert.equal(
+    resolveNodeBinary({
+      env: { PATH: '', HOME: 'C:\\Users\\Test', USERPROFILE: 'C:\\Users\\Test' },
+      exists,
+      candidates: [
+        'C:\\Users\\Test\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe',
+      ],
+      platform: 'win32',
+    }),
+    'C:\\Users\\Test\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe',
+  );
 });
 
 test('base URL rewrite is scoped to the selected provider section', () => {

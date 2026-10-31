@@ -31,7 +31,23 @@ if (-not (Test-Path $ConfigPath)) {
 New-Item -ItemType Directory -Force -Path (Join-Path $DataRoot "versions") | Out-Null
 $Checkout = Join-Path $DataRoot "versions\$Commit"
 if (-not (Test-Path (Join-Path $Checkout ".git"))) {
-  Copy-Item -Recurse -Force $Root $Checkout
+  # Copy the tracked checkout, not the installer's data root when it happens to
+  # be inside this repository. Recursing the whole folder would copy the
+  # destination into itself.
+  $tracked = & $Git -C $Root ls-files
+  if ($LASTEXITCODE -ne 0) {
+    throw "Could not list tracked files from $Root."
+  }
+  foreach ($relative in $tracked) {
+    $source = Join-Path $Root $relative
+    $destination = Join-Path $Checkout $relative
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+    Copy-Item -LiteralPath $source -Destination $destination -Force
+  }
+  $dotGit = Join-Path $Root ".git"
+  if (Test-Path -LiteralPath $dotGit -PathType Container) {
+    Copy-Item -LiteralPath $dotGit -Destination (Join-Path $Checkout ".git") -Recurse -Force
+  }
 }
 
 $env:CODEX_HOME = $CodexHome
@@ -66,12 +82,36 @@ if (-not $CodexCli -and $env:LOCALAPPDATA) {
 }
 if ($CodexCli) {
   $MarketplaceRoot = (Get-Content -LiteralPath (Join-Path $DataRoot 'current.txt') -Raw).Trim()
-  & $CodexCli plugin marketplace add $MarketplaceRoot 2>&1 | Out-Null
-  & $CodexCli plugin add codex-model-list@codex-model-list 2>&1 | Out-Null
+  & $CodexCli plugin marketplace add $MarketplaceRoot
+  if ($LASTEXITCODE -ne 0) {
+    throw "Codex could not register the marketplace from $MarketplaceRoot."
+  }
+  & $CodexCli plugin add codex-model-list@codex-model-list
+  if ($LASTEXITCODE -ne 0) {
+    throw "Codex could not install codex-model-list from its marketplace."
+  }
 }
 
 $TaskName = "CodexModelList"
-$Action = New-ScheduledTaskAction -Execute $Node -Argument (Join-Path $Checkout "plugins\codex-model-list\hooks\update-and-sync.mjs")
+$RunnerPath = Join-Path $DataRoot "run-update.ps1"
+$WatcherPath = Join-Path $DataRoot "watch.ps1"
+$LauncherPath = Join-Path $DataRoot "start-watch.vbs"
+$StartupPath = Join-Path ([Environment]::GetFolderPath('Startup')) "CodexModelList.vbs"
+$Shell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+if (-not (Test-Path -LiteralPath $Shell -PathType Leaf)) {
+  $Shell = (Get-Command powershell.exe -ErrorAction Stop).Source
+}
+
+$RunnerSource = Join-Path $Root "plugins\codex-model-list\hooks\windows-run-update.ps1"
+$WatchSource = Join-Path $Root "plugins\codex-model-list\hooks\windows-watch.ps1"
+if (-not (Test-Path -LiteralPath $RunnerSource -PathType Leaf) -or -not (Test-Path -LiteralPath $WatchSource -PathType Leaf)) {
+  throw "The Windows updater scripts are missing from $Root."
+}
+Copy-Item -LiteralPath $RunnerSource -Destination $RunnerPath -Force
+Copy-Item -LiteralPath $WatchSource -Destination $WatcherPath -Force
+
+$TaskArguments = "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$RunnerPath`" -CodexHome `"$CodexHome`""
+$Action = New-ScheduledTaskAction -Execute $Shell -Argument $TaskArguments
 $Trigger = New-ScheduledTaskTrigger -AtLogOn
 $Interval = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes ([Math]::Max(1, $SyncIntervalMinutes)))
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
@@ -86,42 +126,41 @@ try {
 if (-not $TaskRegistered) {
   # Task Scheduler may be blocked for standard users on managed machines.
   # A hidden per-user watcher in the Startup folder needs no elevation.
-  $UpdateScript = Join-Path $Checkout "plugins\codex-model-list\hooks\update-and-sync.mjs"
-  $WatcherPath = Join-Path $DataRoot "watch.ps1"
-  $LauncherPath = Join-Path $DataRoot "start-watch.vbs"
-  $StartupPath = Join-Path ([Environment]::GetFolderPath('Startup')) "CodexModelList.vbs"
-  $Shell = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
-  if (-not $Shell) { $Shell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe" }
-  $Watcher = @"
-`$ErrorActionPreference = 'Stop'
-`$lockPath = Join-Path `$PSScriptRoot 'watch.lock'
-try { `$lock = [System.IO.File]::Open(`$lockPath, 'OpenOrCreate', 'ReadWrite', 'None') } catch { exit 0 }
-try {
-  while (`$true) {
-    # Follow the version pointer: the updater replaces it on every new commit.
-    `$current = (Get-Content -LiteralPath (Join-Path `$PSScriptRoot 'current.txt') -Raw).Trim()
-    `$script = Join-Path `$current 'plugins\codex-model-list\hooks\update-and-sync.mjs'
-    if (Test-Path -LiteralPath `$script) {
-      & '$($Node.Replace("'", "''"))' `$script | Out-Null
-    }
-    Start-Sleep -Seconds 60
-  }
-} finally { `$lock.Dispose() }
-"@
-  Set-Content -LiteralPath $WatcherPath -Value $Watcher -Encoding UTF8
   $Launcher = @"
 Set shell = CreateObject("WScript.Shell")
-shell.Run """$Shell"" -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File ""$WatcherPath""", 0, False
+shell.Run """$Shell"" -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File ""$WatcherPath"" -CodexHome ""$CodexHome""", 0, False
 "@
   Set-Content -LiteralPath $LauncherPath -Value $Launcher -Encoding ASCII
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $StartupPath) | Out-Null
   Copy-Item -LiteralPath $LauncherPath -Destination $StartupPath -Force
-  Start-Process -FilePath "wscript.exe" -ArgumentList @("`"$LauncherPath`"") -WindowStyle Hidden
-  Write-Host "Installed a per-user startup watcher: $StartupPath"
+  $WatcherStarted = $false
+  try {
+    $ShellApplication = New-Object -ComObject Shell.Application
+    $ShellApplication.ShellExecute("wscript.exe", "`"$LauncherPath`"", "", "open", 0)
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ShellApplication) | Out-Null
+    $WatcherStarted = $true
+  } catch {
+    try {
+      Start-Process -FilePath "wscript.exe" -ArgumentList @("`"$LauncherPath`"") -WindowStyle Hidden
+      $WatcherStarted = $true
+    } catch {
+      Write-Warning "Could not start the watcher now: $($_.Exception.Message)"
+    }
+  }
+  if ($WatcherStarted) {
+    Write-Host "Installed and started a per-user startup watcher: $StartupPath"
+  } else {
+    Write-Host "Installed a per-user startup watcher: $StartupPath"
+  }
+} else {
+  if (Test-Path -LiteralPath $StartupPath) {
+    Remove-Item -LiteralPath $StartupPath -Force -ErrorAction SilentlyContinue
+  }
 }
 
 Write-Host "Installed Codex Model List in $DataRoot"
-Write-Host "Marketplace root: $(Get-Content (Join-Path $DataRoot 'current.txt') -Raw).Trim()"
+$MarketplaceRoot = (Get-Content -LiteralPath (Join-Path $DataRoot 'current.txt') -Raw).Trim()
+Write-Host "Marketplace root: $MarketplaceRoot"
 if ($TaskRegistered) {
   Write-Host "Restart Codex. The scheduled task updates by commit and syncs the catalog every $([Math]::Max(1, $SyncIntervalMinutes)) minute(s)."
 } else {
