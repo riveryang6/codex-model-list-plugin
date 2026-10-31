@@ -53,6 +53,8 @@ The catalog advertises `supports_reasoning_summary_parameter` for chat models so
 
 Gemini, image-generation, and embedding models keep the parameter off because their routes reject it. Models that have no provider metadata are assumed to accept it, which covers relays that expose reasoning models without describing them.
 
+Provider metadata is matched by model ID first. When a point release is newer than the bundled pi provider snapshot, the catalog falls back to its documented model family; for example, `kimi-k3.1-pro` inherits the `low`, `high`, and `max` reasoning levels from `kimi-k3`. Every model that supports `max` also gets an additional `ultra` tier, while `max` remains available.
+
 ## Startup update policy
 
 The background updater checks the latest remote commit with a five-second timeout.

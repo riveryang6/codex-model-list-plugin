@@ -75,6 +75,10 @@ export function getPiModel(id, index) {
   if (stripped !== candidate) variants.push(stripped, normalizeId(stripped));
   const dated = candidate.replace(/-20\d{6}$/, '');
   if (dated !== candidate) variants.push(dated, normalizeId(dated));
+  // Kimi point releases share the base K3 request format and effort levels,
+  // even when the bundled provider snapshot predates the exact model ID.
+  if (/^kimi-k3(?:\.\d+)?(?:-|$)/i.test(candidate)) variants.push('kimi-k3');
+  else if (/^k3(?:\.\d+)?(?:-|$)/i.test(candidate)) variants.push('k3');
   for (const key of variants) if (index.has(key)) return index.get(key);
   return null;
 }
@@ -103,10 +107,9 @@ function effortsFor(id, pi, existing, fallback) {
       if (!has || map[level] === null) continue;
       result.push(level === 'off' ? 'none' : level);
     }
-    // Keep the Sol ultra tier available across upstream Sol revisions, even
-    // when the provider metadata has not added the new ID yet.
-    if (/^gpt-.*-sol$/i.test(id) && !result.includes('ultra')) result.push('ultra');
-    if (existing?.supported_reasoning_levels?.some(item => item.effort === 'ultra') && !result.includes('ultra')) result.push('ultra');
+    // Ultra is an extra tier above max, not a replacement for it. Offer it
+    // whenever the provider model supports max.
+    if (result.includes('max') && !result.includes('ultra')) result.push('ultra');
     return result;
   }
   if (/(^gpt-image|grok-imagine|^wan\d.*-image|embedding|non-reasoning)/i.test(id)) return [];

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCatalog, isManagedModel, LEGACY_MANAGED_DESCRIPTION, MANAGED_DESCRIPTION } from '../plugins/codex-model-list/hooks/catalog.mjs';
+import { buildCatalog, getPiModel, isManagedModel, LEGACY_MANAGED_DESCRIPTION, MANAGED_DESCRIPTION } from '../plugins/codex-model-list/hooks/catalog.mjs';
 
 function templateModel(slug = 'template') {
   return {
@@ -47,11 +47,42 @@ test('provider metadata controls reasoning, image input and summary support', ()
     ]),
   );
   const model = result.models[0];
-  assert.deepEqual(model.supported_reasoning_levels.map(item => item.effort), ['low', 'high', 'max']);
+  assert.deepEqual(model.supported_reasoning_levels.map(item => item.effort), ['low', 'high', 'max', 'ultra']);
   assert.equal(model.supports_reasoning_summary_parameter, true);
   assert.equal(model.default_reasoning_summary, 'auto');
   assert.deepEqual(model.input_modalities, ['text', 'image']);
   assert.equal(model.context_window, 500000);
+});
+
+test('Kimi K3 point releases inherit the complete K3 reasoning levels', () => {
+  const template = { models: [templateModel()] };
+  const kimiK3 = {
+    reasoning: true,
+    thinkingLevelMap: {
+      off: null,
+      minimal: null,
+      low: 'low',
+      medium: null,
+      high: 'high',
+      xhigh: null,
+      max: 'max',
+    },
+    input: ['text', 'image'],
+  };
+  const index = new Map([['kimi-k3', kimiK3]]);
+  assert.equal(getPiModel('kimi-k3.1-pro', index), kimiK3);
+  assert.equal(getPiModel('kimi-k3.1-pro-highspeed', index), kimiK3);
+
+  const result = buildCatalog(
+    template,
+    template,
+    [{ id: 'kimi-k3.1-pro' }],
+    index,
+  );
+  const model = result.models[0];
+  assert.deepEqual(model.supported_reasoning_levels.map(item => item.effort), ['low', 'high', 'max', 'ultra']);
+  assert.equal(model.default_reasoning_level, 'high');
+  assert.deepEqual(model.input_modalities, ['text', 'image']);
 });
 
 test('summary stays off for models whose upstream rejects the parameter', () => {
