@@ -125,7 +125,26 @@ function effortDefinitions(efforts, descriptions, existing) {
   });
 }
 
-function updateMetadata(model, remote, pi, existing, fallback, descriptions, state) {
+// Codex sends `reasoning.summary` only when the catalog advertises support for
+// it; the value itself comes from config.toml. Models without provider
+// metadata are assumed to tolerate the field, which keeps reasoning models
+// such as Kimi working. Gemini and image models are excluded because their
+// upstream routes reject the parameter.
+function supportsReasoningSummary(id, pi) {
+  if (pi?.reasoning === false || pi?.type === 'image') return false;
+  return !/^(gemini|gpt-image|dall-e)/i.test(id)
+    && !/(^grok-imagine|^wan\d.*-image|embedding|non-reasoning)/i.test(id);
+}
+
+function summaryDefault(existing, options) {
+  const requested = String(options.summary ?? '').trim().toLowerCase();
+  if (['auto', 'concise', 'detailed'].includes(requested)) return requested;
+  const installed = String(existing?.default_reasoning_summary ?? '').trim().toLowerCase();
+  if (['auto', 'concise', 'detailed'].includes(installed)) return installed;
+  return 'auto';
+}
+
+function updateMetadata(model, remote, pi, existing, fallback, descriptions, state, options = {}) {
   const efforts = effortsFor(model.slug, pi, existing, fallback);
   const definitions = effortDefinitions(efforts, descriptions, existing);
   if (JSON.stringify(model.supported_reasoning_levels) !== JSON.stringify(definitions)) {
@@ -141,15 +160,13 @@ function updateMetadata(model, remote, pi, existing, fallback, descriptions, sta
     model.default_reasoning_level = ['medium', 'high', 'low'].find(value => efforts.includes(value)) || efforts[0];
     state.changed = true;
   }
-  // The gateway is not required to accept the summary parameter; preserve what
-  // the installed catalog already advertises and only enable it when provider
-  // metadata explicitly says so.
-  const supportsReasoningSummary = existing?.supports_reasoning_summary_parameter === true
-    || pi?.compat?.supportsReasoningSummary === true;
-  setProperty(model, 'supports_reasoning_summary_parameter', supportsReasoningSummary, state);
-  if (supportsReasoningSummary && !existing && !model.default_reasoning_summary) {
-    setProperty(model, 'default_reasoning_summary', 'auto', state);
-  } else if (!supportsReasoningSummary && model.default_reasoning_summary !== 'none') {
+  const supportsSummary = supportsReasoningSummary(model.slug, pi);
+  setProperty(model, 'supports_reasoning_summary_parameter', supportsSummary, state);
+  if (supportsSummary) {
+    // A non-"none" default keeps the field usable when config.toml does not
+    // set model_reasoning_summary; an explicit config value still wins.
+    setProperty(model, 'default_reasoning_summary', summaryDefault(existing, options), state);
+  } else if (model.default_reasoning_summary !== 'none') {
     setProperty(model, 'default_reasoning_summary', 'none', state);
   }
   const context = contextLimit(remote, pi, existing, fallback);
@@ -191,7 +208,7 @@ export function isManagedModel(model) {
   return model?.description === MANAGED_DESCRIPTION || model?.description === LEGACY_MANAGED_DESCRIPTION;
 }
 
-export function buildCatalog(catalog, templateCatalog, remoteModels, providerIndex = new Map()) {
+export function buildCatalog(catalog, templateCatalog, remoteModels, providerIndex = new Map(), options = {}) {
   const oldModels = Array.isArray(catalog?.models) ? catalog.models : [];
   const templateModels = Array.isArray(templateCatalog?.models) ? templateCatalog.models : [];
   const metadataModels = [...oldModels, ...templateModels].filter(isManagedModel);
@@ -231,7 +248,7 @@ export function buildCatalog(catalog, templateCatalog, remoteModels, providerInd
     }));
     model.slug = id;
     if (!model.display_name) model.display_name = id;
-    updateMetadata(model, remote, getPiModel(id, providerIndex), existing, fallback, descriptions, state);
+    updateMetadata(model, remote, getPiModel(id, providerIndex), existing, fallback, descriptions, state, options);
     refreshedModels.push(model);
   }
   return { ...(catalog ?? templateCatalog), models: refreshedModels };

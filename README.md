@@ -47,6 +47,12 @@ The plugin reads, on every successful sync:
 
 Reinstalling a release that used the retired local proxy restores the original endpoint first; otherwise `base_url` is left exactly as configured.
 
+## Reasoning summaries
+
+The catalog advertises `supports_reasoning_summary_parameter` for chat models so Codex asks the provider for a reasoning summary and renders it while a turn streams. The summary level comes from the top-level `model_reasoning_summary` in `config.toml` (`auto`, `concise`, `detailed`, or `none`); the catalog only supplies a default for when that setting is absent.
+
+Gemini, image-generation, and embedding models keep the parameter off because their routes reject it. Models that have no provider metadata are assumed to accept it, which covers relays that expose reasoning models without describing them.
+
 ## Startup update policy
 
 The background updater checks the latest remote commit with a five-second timeout.

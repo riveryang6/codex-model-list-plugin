@@ -48,10 +48,43 @@ test('provider metadata controls reasoning, image input and summary support', ()
   );
   const model = result.models[0];
   assert.deepEqual(model.supported_reasoning_levels.map(item => item.effort), ['low', 'high', 'max']);
-  assert.equal(model.default_reasoning_summary, 'none');
-  assert.equal(model.supports_reasoning_summary_parameter, false);
+  assert.equal(model.supports_reasoning_summary_parameter, true);
+  assert.equal(model.default_reasoning_summary, 'auto');
   assert.deepEqual(model.input_modalities, ['text', 'image']);
   assert.equal(model.context_window, 500000);
+});
+
+test('summary stays off for models whose upstream rejects the parameter', () => {
+  const template = { models: [templateModel()] };
+  const remote = [
+    { id: 'deepseek-v4.1-flash' },
+    { id: 'gemini-3.8-flash' },
+    { id: 'gpt-image-2.5-flare' },
+    { id: 'kimi-k3.1-pro' },
+  ];
+  const index = new Map([
+    ['deepseek-v4.1-flash', { reasoning: true, thinkingLevelMap: { low: 'low', high: 'high' } }],
+    ['gemini-3.8-flash', { reasoning: true, thinkingLevelMap: { low: 'low', high: 'high' } }],
+    ['gpt-image-2.5-flare', { type: 'image' }],
+  ]);
+  const result = buildCatalog(template, template, remote, index, { summary: 'concise' });
+  const bySlug = new Map(result.models.map(model => [model.slug, model]));
+  assert.equal(bySlug.get('deepseek-v4.1-flash').supports_reasoning_summary_parameter, true);
+  assert.equal(bySlug.get('deepseek-v4.1-flash').default_reasoning_summary, 'concise');
+  assert.equal(bySlug.get('gemini-3.8-flash').supports_reasoning_summary_parameter, false);
+  assert.equal(bySlug.get('gemini-3.8-flash').default_reasoning_summary, 'none');
+  assert.equal(bySlug.get('gpt-image-2.5-flare').default_reasoning_summary, 'none');
+  assert.equal(bySlug.get('kimi-k3.1-pro').supports_reasoning_summary_parameter, true);
+  assert.equal(bySlug.get('kimi-k3.1-pro').default_reasoning_summary, 'concise');
+});
+
+test('an installed summary setting survives syncs without an explicit value', () => {
+  const existing = {
+    models: [{ ...templateModel('kept-model'), supports_reasoning_summary_parameter: true, default_reasoning_summary: 'concise' }],
+  };
+  const result = buildCatalog(existing, existing, [{ id: 'kept-model' }]);
+  assert.equal(result.models[0].supports_reasoning_summary_parameter, true);
+  assert.equal(result.models[0].default_reasoning_summary, 'concise');
 });
 
 test('an installed managed catalog keeps its full model messages and per-model settings', () => {
@@ -80,7 +113,7 @@ test('an installed managed catalog keeps its full model messages and per-model s
   assert.equal(model.default_reasoning_level, 'medium');
   assert.equal(model.context_window, 1048576);
   assert.equal(model.auto_compact_token_limit, 786432);
-  assert.equal(model.supports_reasoning_summary_parameter, false);
-  assert.equal(model.default_reasoning_summary, 'none');
+  assert.equal(model.supports_reasoning_summary_parameter, true);
+  assert.equal(model.default_reasoning_summary, 'auto');
   assert.equal(isManagedModel(model), true);
 });

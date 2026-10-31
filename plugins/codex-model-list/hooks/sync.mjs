@@ -75,7 +75,9 @@ export async function sync({ home = codexHome(), env = process.env } = {}) {
   const remoteModels = await fetchModels(provider, credential);
   const dataDir = providerDataDir();
   const index = piIndex(dataDir);
-  const nextCatalog = buildCatalog(existing ?? template, template, remoteModels, index);
+  const nextCatalog = buildCatalog(existing ?? template, template, remoteModels, index, {
+    summary: config.top.model_reasoning_summary || null,
+  });
   writeCatalog(catalogPath, nextCatalog);
   log(home, `Synced ${remoteModels.length} models from ${resolveModelsEndpoint(provider)}; credential ${credential.source}.`);
   return { catalogPath, provider, credentialSource: credential.source, modelCount: remoteModels.length };
