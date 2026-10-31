@@ -63,6 +63,22 @@ $env:CODEX_HOME = $CodexHome
 $env:CODEX_MODEL_LIST_DATA = $DataRoot
 & $Node (Join-Path $Root "plugins\codex-model-list\hooks\install.mjs") --source $Root --commit $Commit
 
+# Remove only the trust entries the old Lifaplus plugin left behind. Codex no
+# longer needs them once that plugin and marketplace are gone.
+$CleanConfig = Get-Content -LiteralPath $ConfigPath -Raw
+$CleanLines = $CleanConfig -split "`r?`n"
+$Clean = [System.Collections.Generic.List[string]]::new()
+for ($i = 0; $i -lt $CleanLines.Count; $i++) {
+  if ($CleanLines[$i].Trim() -eq '[hooks.state."lifaplus-model-sync@lifaplus-local:hooks/hooks.json:session_start:0:0"]') {
+    while ($i + 1 -lt $CleanLines.Count -and $CleanLines[$i + 1].Trim() -ne '' -and -not $CleanLines[$i + 1].TrimStart().StartsWith('[')) { $i++ }
+    continue
+  }
+  $Clean.Add($CleanLines[$i])
+}
+if ($Clean.Count -ne $CleanLines.Count) {
+  Set-Content -LiteralPath $ConfigPath -Value ($Clean -join "`r`n") -NoNewline
+}
+
 # The plugin is installed from the printed marketplace root. Doing it here
 # keeps the install one step and makes the marketplace snapshot authoritative.
 $CodexCli = (Get-Command codex -ErrorAction SilentlyContinue).Source
