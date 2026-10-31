@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { sync } from '../plugins/codex-model-list/hooks/sync.mjs';
+import { buildPiIndex, getPiModel } from '../plugins/codex-model-list/hooks/catalog.mjs';
 
 test('each sync reads the provider selected in config.toml', async () => {
   const requests = [];
@@ -30,12 +31,26 @@ test('each sync reads the provider selected in config.toml', async () => {
 
   try {
     writeConfig(`http://127.0.0.1:${port}/v1`);
-    await sync({ home, env: {} });
+    await sync({ home, env: { CODEX_MODEL_LIST_PI_URL: `http://127.0.0.1:${port}/pi` } });
     writeConfig(`http://127.0.0.1:${port}/v2`);
-    await sync({ home, env: {} });
+    await sync({ home, env: { CODEX_MODEL_LIST_PI_URL: `http://127.0.0.1:${port}/pi` } });
   } finally {
     server.close();
   }
 
-  assert.deepEqual(requests, ['/v1/models', '/v2/models']);
+  assert.deepEqual(requests.filter(path => path !== '/pi'), ['/v1/models', '/v2/models']);
+});
+
+test('pi.dev flat catalogs and legacy nested snapshots both index', () => {
+  const flat = buildPiIndex({
+    openai: { 'gpt-6.1-sol': { id: 'gpt-6.1-sol', provider: 'openai', reasoning: true, contextWindow: 272000 } },
+    openrouter: { 'gpt-6.1-sol': { id: 'gpt-6.1-sol', provider: 'openrouter', reasoning: true, contextWindow: 1050000 } },
+  });
+  // The owning provider wins over a relay publishing a different context window.
+  assert.equal(getPiModel('gpt-6.1-sol', flat).contextWindow, 272000);
+
+  const nested = buildPiIndex({
+    'openai-completions': { 'chat:deepseek-flash': { id: 'deepseek-flash', reasoning: true, contextWindow: 1000000 } },
+  });
+  assert.equal(getPiModel('deepseek-flash', nested).contextWindow, 1000000);
 });

@@ -58,7 +58,30 @@ The catalog advertises `supports_reasoning_summary_parameter` for chat models so
 
 Gemini, image-generation, and embedding models keep the parameter off because their routes reject it. Models that have no provider metadata are assumed to accept it, which covers relays that expose reasoning models without describing them.
 
-Provider metadata is matched by model ID first. When a point release is newer than the bundled pi provider snapshot, the catalog falls back to its documented model family; for example, `kimi-k3.1-pro` inherits the `low`, `high`, and `max` reasoning levels from `kimi-k3`. Every model that supports `max` also gets an additional `ultra` tier, while `max` remains available.
+Provider metadata is matched by model ID first. When a point release is newer than the published pi.dev entry, the catalog falls back to its documented model family; for example, `kimi-k3.1-pro` inherits the `low`, `high`, and `max` reasoning levels from `kimi-k3`. Every model that supports `max` also gets an additional `ultra` tier, while `max` remains available.
+
+## pi.dev catalog
+
+Capabilities, reasoning levels, and context limits come from the public
+`https://pi.dev/api/models` catalog. Nothing is vendored in the repository: every
+sync fetches the current catalog and caches the response under
+`~/.codex/codex-model-list/pi/`.
+
+- The response `Cache-Control: max-age` sets the cache lifetime, so repeated
+  syncs inside that window do not touch the network.
+- Once it expires, the request is conditional (`If-None-Match` and
+  `If-Modified-Since`). A `304` reuses the cached copy without downloading the
+  ~1 MB payload again.
+- A network failure, timeout, or error status keeps the stale cache, and a
+  first-ever failure leaves the installed catalog untouched.
+- The endpoint honours `CODEX_MODEL_LIST_PI_URL` and
+  `CODEX_MODEL_LIST_PI_TIMEOUT_MS` for testing or a mirror.
+
+When several providers publish the same model ID, the entry whose provider owns
+the ID wins over relays and gateways, because context windows legitimately
+differ per route (`gpt-6.1-sol` is 272000 on `openai` but 1050000 through
+`cloudflare-ai-gateway`). The selected provider's own `/models` payload still
+takes precedence over pi.dev, since it describes the endpoint actually in use.
 
 ## Startup update policy
 
@@ -73,6 +96,7 @@ The five-second budget covers only `git ls-remote`. A fetch after a successful c
 ## Files
 
 - `plugins/codex-model-list/hooks/sync.mjs`: provider discovery and catalog construction
+- `plugins/codex-model-list/hooks/pi.mjs`: pi.dev catalog fetch, cache, and revalidation
 - `plugins/codex-model-list/hooks/update.mjs`: commit-based updater
 - `plugins/codex-model-list/hooks/session-start.sh`: startup entry point
 - `install-macos.sh`: installs the plugin runtime and launchd helper

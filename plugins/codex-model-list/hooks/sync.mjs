@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCatalog, isManagedModel, piIndex, writeCatalog } from './catalog.mjs';
+import { buildCatalog, buildPiIndex, isManagedModel, writeCatalog } from './catalog.mjs';
 import {
   codexHome,
   readAuth,
@@ -11,9 +11,9 @@ import {
   resolveModelsEndpoint,
   resolveProvider,
 } from './config.mjs';
+import { loadPiCatalog } from './pi.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const PI_ROOT = join(ROOT, 'pi-ai');
 const MANAGED_TEMPLATE = join(ROOT, 'template', 'catalog.json');
 
 function log(home, message) {
@@ -24,15 +24,6 @@ function log(home, message) {
   } catch {
     // A logging failure must not prevent startup.
   }
-}
-
-function providerDataDir() {
-  const bundled = join(PI_ROOT, '1.4.0', 'package', 'dist', 'providers', 'data');
-  if (existsSync(bundled)) return bundled;
-  const cache = join(process.env.CODEX_MODEL_LIST_DATA || join(codexHome(), 'codex-model-list'), 'pi-ai');
-  if (!existsSync(cache)) return null;
-  const versions = readdirSync(cache).filter(name => existsSync(join(cache, name, 'package', 'dist', 'providers', 'data'))).sort().reverse();
-  return versions.length ? join(cache, versions[0], 'package', 'dist', 'providers', 'data') : null;
 }
 
 function readJSON(path) {
@@ -73,14 +64,15 @@ export async function sync({ home = codexHome(), env = process.env } = {}) {
   const template = existing?.models?.some(isManagedModel) ? existing : bundled;
   if (!template) throw new Error('No managed model template is available.');
   const remoteModels = await fetchModels(provider, credential);
-  const dataDir = providerDataDir();
-  const index = piIndex(dataDir);
+  const pi = await loadPiCatalog({ home, env });
+  const index = buildPiIndex(pi?.catalog);
   const nextCatalog = buildCatalog(existing ?? template, template, remoteModels, index, {
     summary: config.top.model_reasoning_summary || null,
   });
   writeCatalog(catalogPath, nextCatalog);
-  log(home, `Synced ${remoteModels.length} models from ${resolveModelsEndpoint(provider)}; credential ${credential.source}.`);
-  return { catalogPath, provider, credentialSource: credential.source, modelCount: remoteModels.length };
+  const piNote = pi ? `pi.dev ${pi.source} (${index.size} ids)` : 'pi.dev unavailable';
+  log(home, `Synced ${remoteModels.length} models from ${resolveModelsEndpoint(provider)}; credential ${credential.source}; ${piNote}.`);
+  return { catalogPath, provider, credentialSource: credential.source, modelCount: remoteModels.length, piSource: pi?.source ?? null };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 export const MANAGED_DESCRIPTION = 'Model exposed through the active Codex provider.';
 export const LEGACY_MANAGED_DESCRIPTION = 'Lifaplus model exposed through the configured OpenAI-compatible Responses API.';
@@ -35,36 +35,63 @@ function compactLimit(context) {
 }
 
 function addIndex(index, key, value) {
-  if (!key || index.has(key)) {
-    if (key && index.get(key)?.type === 'image' && value?.type === 'chat') index.set(key, value);
-    return;
+  if (!key) return;
+  const current = index.get(key);
+  if (current) {
+    // Chat entries beat image entries, a provider whose name matches the model
+    // ID prefix wins, then the more authoritative provider wins.
+    const score = entry => (entry.type === 'image' ? 0 : 1000) + (entry.weight ?? 0);
+    const currentScore = score(current);
+    const nextScore = score(value);
+    if (nextScore <= currentScore) return;
   }
   index.set(key, value);
 }
 
-export function piIndex(dataDir) {
-  const index = new Map();
-  if (!dataDir || !existsSync(dataDir)) return index;
-  const priority = ['openai.json', 'openai-codex.json', 'anthropic.json', 'deepseek.json', 'google.json', 'xai.json', 'xiaomi.json', 'minimax.json', 'zai.json', 'moonshotai.json', 'qwen-token-plan.json', 'qwen-token-plan-cn.json', 'qwen-token-plan-individual.json'];
-  const names = new Set(readdirSync(dataDir).filter(name => name.endsWith('.json')));
-  const files = [...priority.filter(name => names.has(name)), ...[...names].filter(name => !priority.includes(name)).sort()];
-  for (const file of files) {
-    let root;
-    try { root = JSON.parse(readFileSync(join(dataDir, file), 'utf8')); } catch { continue; }
-    for (const provider of Object.values(root ?? {})) {
-      for (const [entryName, value] of Object.entries(provider ?? {})) {
-        if (!value || (value.type && !['chat', 'image'].includes(value.type))) continue;
-        const modelId = String(value.id || entryName);
-        addIndex(index, modelId, value);
-        addIndex(index, normalizeId(modelId), value);
-        if (modelId.includes('/')) {
-          const shortId = modelId.split('/').pop();
-          addIndex(index, shortId, value);
-          addIndex(index, normalizeId(shortId), value);
-        }
+function providerPreference(provider, modelId = '') {
+  const name = String(provider ?? '').toLowerCase();
+  const id = String(modelId ?? '').toLowerCase();
+  // A provider that owns the model (deepseek publishing deepseek-*) is the
+  // best source for its limits; relays and gateways are ranked below.
+  if (id && name && (id.startsWith(`${name}-`) || id.startsWith(`${name}.`))) return 6;
+  if (/^(openai|openai-codex)$/.test(name)) return 5;
+  if (/^(anthropic|deepseek|google|google-vertex|xai|moonshotai|moonshotai-cn|minimax|minimax-cn|zai|zai-coding-cn|qwen|xiaomi)/.test(name)) return 4;
+  if (/^(azure|amazon-bedrock|github-copilot|vertex|radius|typesafe)/.test(name)) return 2;
+  if (/^(openrouter|vercel-ai-gateway|cloudflare|opencode|huggingface|groq|fireworks|baseten|cerebras|mistral|nvidia|together|meta|ant-ling)/.test(name)) return 1;
+  return 3;
+}
+
+// pi.dev/api/models returns flat `provider -> model` maps. Older bundled
+// snapshots nested an extra api-type level (`provider -> api -> model`), so
+// both shapes are accepted. When several providers publish the same model ID,
+// the entry from the most authoritative provider wins, because context windows
+// legitimately differ per gateway (for example 272000 on openai versus
+// 1050000 through cloudflare-ai-gateway).
+function addPiEntries(index, root, providerName) {
+  if (!root || typeof root !== 'object' || Array.isArray(root)) return;
+  for (const [entryName, value] of Object.entries(root)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    if (value.id || value.contextWindow || value.reasoning !== undefined) {
+      if (value.type && !['chat', 'image'].includes(value.type)) continue;
+      const modelId = String(value.id || entryName);
+      const provider = String(value.provider || providerName || '');
+      const entry = { ...value, provider, weight: providerPreference(provider, modelId) };
+      addIndex(index, modelId, entry);
+      addIndex(index, normalizeId(modelId), entry);
+      if (modelId.includes('/')) {
+        const shortId = modelId.split('/').pop();
+        addIndex(index, shortId, entry);
+        addIndex(index, normalizeId(shortId), entry);
       }
+      continue;
     }
+    addPiEntries(index, value, entryName);
   }
+}
+
+export function buildPiIndex(catalog) {
+  const index = new Map();
+  addPiEntries(index, catalog);
   return index;
 }
 
