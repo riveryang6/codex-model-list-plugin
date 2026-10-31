@@ -63,6 +63,19 @@ $env:CODEX_HOME = $CodexHome
 $env:CODEX_MODEL_LIST_DATA = $DataRoot
 & $Node (Join-Path $Root "plugins\codex-model-list\hooks\install.mjs") --source $Root --commit $Commit
 
+# The plugin is installed from the printed marketplace root. Doing it here
+# keeps the install one step and makes the marketplace snapshot authoritative.
+$CodexCli = (Get-Command codex -ErrorAction SilentlyContinue).Source
+if (-not $CodexCli -and $env:LOCALAPPDATA) {
+  $CodexCli = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'OpenAI\Codex\bin') -Filter 'codex.exe' -Recurse -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+}
+if ($CodexCli) {
+  $MarketplaceRoot = (Get-Content -LiteralPath (Join-Path $DataRoot 'current.txt') -Raw).Trim()
+  & $CodexCli plugin marketplace add $MarketplaceRoot 2>&1 | Out-Null
+  & $CodexCli plugin add codex-model-list@codex-model-list 2>&1 | Out-Null
+}
+
 $TaskName = "CodexModelList"
 $Action = New-ScheduledTaskAction -Execute $Node -Argument (Join-Path $Checkout "plugins\codex-model-list\hooks\update-and-sync.mjs")
 $Trigger = New-ScheduledTaskTrigger -AtLogOn
