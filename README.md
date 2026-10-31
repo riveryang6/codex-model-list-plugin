@@ -32,7 +32,7 @@ Run PowerShell 7 or Windows PowerShell from the repository root:
 powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 ```
 
-The Windows installer uses the native Git checkout, a cross-platform `current.txt` pointer, and a Scheduled Task that runs the commit check and catalog sync every minute. It does not require WSL, bash, or symbolic links.
+The Windows installer uses the native Git checkout, a cross-platform `current.txt` pointer, and a Scheduled Task that runs the commit check and catalog sync every minute. When Task Scheduler is unavailable, it falls back to a hidden per-user Startup-folder watcher. It does not require WSL, bash, symbolic links, or elevation.
 
 After installation, add the marketplace and plugin with the paths printed by the installer, then restart Codex.
 

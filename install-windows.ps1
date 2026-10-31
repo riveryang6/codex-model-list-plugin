@@ -68,8 +68,50 @@ $Action = New-ScheduledTaskAction -Execute $Node -Argument (Join-Path $Checkout 
 $Trigger = New-ScheduledTaskTrigger -AtLogOn
 $Interval = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes ([Math]::Max(1, $SyncIntervalMinutes)))
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
-Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger @($Trigger, $Interval) -Settings $Settings -Force | Out-Null
+$TaskRegistered = $false
+try {
+  Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger @($Trigger, $Interval) -Settings $Settings -Force -ErrorAction Stop | Out-Null
+  $TaskRegistered = $true
+} catch {
+  Write-Warning "Task Scheduler registration failed; installing a per-user startup fallback. $($_.Exception.Message)"
+}
+
+if (-not $TaskRegistered) {
+  # Task Scheduler may be blocked for standard users on managed machines.
+  # A hidden per-user watcher in the Startup folder needs no elevation.
+  $UpdateScript = Join-Path $Checkout "plugins\codex-model-list\hooks\update-and-sync.mjs"
+  $WatcherPath = Join-Path $DataRoot "watch.ps1"
+  $LauncherPath = Join-Path $DataRoot "start-watch.vbs"
+  $StartupPath = Join-Path ([Environment]::GetFolderPath('Startup')) "CodexModelList.vbs"
+  $Shell = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
+  if (-not $Shell) { $Shell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe" }
+  $Watcher = @"
+`$ErrorActionPreference = 'Stop'
+`$lockPath = Join-Path `$PSScriptRoot 'watch.lock'
+try { `$lock = [System.IO.File]::Open(`$lockPath, 'OpenOrCreate', 'ReadWrite', 'None') } catch { exit 0 }
+try {
+  while (`$true) {
+    & '$($Node.Replace("'", "''"))' '$($UpdateScript.Replace("'", "''"))' | Out-Null
+    Start-Sleep -Seconds 60
+  }
+} finally { `$lock.Dispose() }
+"@
+  Set-Content -LiteralPath $WatcherPath -Value $Watcher -Encoding UTF8
+  $Launcher = @"
+Set shell = CreateObject("WScript.Shell")
+shell.Run """$Shell"" -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File ""$WatcherPath""", 0, False
+"@
+  Set-Content -LiteralPath $LauncherPath -Value $Launcher -Encoding ASCII
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $StartupPath) | Out-Null
+  Copy-Item -LiteralPath $LauncherPath -Destination $StartupPath -Force
+  Start-Process -FilePath "wscript.exe" -ArgumentList @("`"$LauncherPath`"") -WindowStyle Hidden
+  Write-Host "Installed a per-user startup watcher: $StartupPath"
+}
 
 Write-Host "Installed Codex Model List in $DataRoot"
 Write-Host "Marketplace root: $(Get-Content (Join-Path $DataRoot 'current.txt') -Raw).Trim()"
-Write-Host "Restart Codex. The scheduled task updates by commit and syncs the catalog every $([Math]::Max(1, $SyncIntervalMinutes)) minute(s)."
+if ($TaskRegistered) {
+  Write-Host "Restart Codex. The scheduled task updates by commit and syncs the catalog every $([Math]::Max(1, $SyncIntervalMinutes)) minute(s)."
+} else {
+  Write-Host "Restart Codex. The per-user watcher updates by commit and syncs the catalog every minute."
+}
