@@ -1,0 +1,22 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/marketplace.schema.json",
+  "name": "codex-model-list",
+  "interface": {
+    "displayName": "Codex Model List"
+  },
+  "plugins": [
+    {
+      "name": "codex-model-list",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-model-list"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL",
+        "products": ["CODEX"]
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

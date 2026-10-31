@@ -1,0 +1,115 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+
+export function codexHome(env = process.env) {
+  return env.CODEX_HOME || join(homedir(), '.codex');
+}
+
+function unquote(value) {
+  const trimmed = String(value ?? '').trim();
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed.slice(1, -1);
+    }
+  }
+  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function parseAssignment(line) {
+  const match = /^\s*([A-Za-z0-9_.-]+)\s*=\s*(.*?)\s*$/.exec(line);
+  if (!match) return null;
+  return { key: match[1], value: unquote(match[2]) };
+}
+
+export function parseConfig(text) {
+  const top = {};
+  const providers = {};
+  let section = null;
+  for (const raw of String(text ?? '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const table = /^\[([^\]]+)\]$/.exec(line);
+    if (table) {
+      section = table[1].trim();
+      continue;
+    }
+    const assignment = parseAssignment(line);
+    if (!assignment) continue;
+    if (section?.startsWith('model_providers.')) {
+      const name = section.slice('model_providers.'.length);
+      providers[name] ??= {};
+      providers[name][assignment.key] = assignment.value;
+    } else if (!section) {
+      top[assignment.key] = assignment.value;
+    }
+  }
+  return { top, providers };
+}
+
+export function readConfig(home = codexHome()) {
+  const path = join(home, 'config.toml');
+  if (!existsSync(path)) throw new Error(`Codex config not found: ${path}`);
+  return parseConfig(readFileSync(path, 'utf8'));
+}
+
+export function readAuth(home = codexHome()) {
+  const path = join(home, 'auth.json');
+  if (!existsSync(path)) throw new Error(`Codex auth file not found: ${path}`);
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+export function resolveProvider(config) {
+  const name = config.top.model_provider || 'openai';
+  const provider = config.providers[name] || {};
+  const baseUrl = provider.base_url || config.top.openai_base_url || 'https://api.openai.com/v1';
+  return {
+    name,
+    baseUrl: String(baseUrl).replace(/\/+$/, ''),
+    envKey: provider.env_key || null,
+    wireApi: provider.wire_api || 'responses',
+    requiresOpenAIAuth: String(provider.requires_openai_auth).toLowerCase() === 'true',
+  };
+}
+
+export function resolveUpstream(provider, savedUpstream = null) {
+  if (savedUpstream) return String(savedUpstream).replace(/\/+$/, '');
+  return provider.baseUrl;
+}
+
+export function resolveCredential(auth, provider, env = process.env) {
+  if (provider.envKey && env[provider.envKey]) return { token: env[provider.envKey], source: `env:${provider.envKey}` };
+  if (env.OPENAI_API_KEY) return { token: env.OPENAI_API_KEY, source: 'env:OPENAI_API_KEY' };
+  if (env.CODEX_API_KEY) return { token: env.CODEX_API_KEY, source: 'env:CODEX_API_KEY' };
+  if (auth?.OPENAI_API_KEY) return { token: String(auth.OPENAI_API_KEY), source: 'auth.json:OPENAI_API_KEY' };
+  if (auth?.tokens?.access_token) return { token: String(auth.tokens.access_token), source: 'auth.json:access_token' };
+  return null;
+}
+
+export function resolveCatalogPath(config, home = codexHome()) {
+  return config.top.model_catalog_json || join(home, 'codex-model-list.json');
+}
+
+export function resolveModelsEndpoint(provider) {
+  return `${provider.baseUrl}/models`;
+}
+
+export function rewriteProviderBaseUrl(text, providerName, replacement) {
+  const escaped = providerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const header = new RegExp(`^\\[model_providers\\.${escaped}\\]\\s*$`, 'm').exec(text);
+  if (!header) return null;
+  const start = header.index + header[0].length;
+  const rest = text.slice(start);
+  const next = rest.search(/^\[/m);
+  const end = next >= 0 ? start + next : text.length;
+  const section = text.slice(start, end);
+  const base = /^base_url\s*=\s*.*$/m;
+  if (!base.test(section)) return null;
+  const updated = section.replace(base, `base_url = ${JSON.stringify(replacement)}`);
+  return text.slice(0, start) + updated + text.slice(end);
+}

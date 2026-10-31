@@ -1,0 +1,9 @@
+node_modules/
+*.log
+.DS_Store
+auth.json
+config.toml
+lifaplus-models.json
+catalog/lifaplus-models.json
+plugins/lifaplus-model-sync/catalog/lifaplus-models.json
+*.before-*

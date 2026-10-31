@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "^startup$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${PLUGIN_ROOT}/hooks/session-start.sh\"",
+            "timeout": 20,
+            "statusMessage": "Checking model list plugin updates"
+          }
+        ]
+      }
+    ]
+  }
+}
