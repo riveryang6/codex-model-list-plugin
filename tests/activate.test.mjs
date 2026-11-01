@@ -49,3 +49,21 @@ test('activate refuses to rewrite malformed TOML', () => {
   assert.match(result.stderr, /unclosed|quote|invalid|No active|marketplace/i);
   assert.equal(readFileSync(config, 'utf8'), configText);
 });
+
+test('activate replaces a stale config source with one completed rename', () => {
+  const home = mkdtempSync(join(tmpdir(), 'codex-model-list-activate-change-'));
+  const current = join(home, 'codex-model-list', 'versions', 'current');
+  const configText = `model_provider = "custom"
+
+[marketplaces.codex-model-list]
+source_type = "local"
+source = "C:\\old"
+`;
+  const { config } = setup(home, configText);
+  const result = activate(home);
+  assert.equal(result.status, 0, result.stderr);
+  const updated = readFileSync(config, 'utf8');
+  assert.match(updated, /source = ".*current"/);
+  assert.doesNotMatch(updated, /C:\\old/);
+  assert.equal(readFileSync(join(current, 'plugins', 'codex-model-list', 'hooks', 'activate.mjs'), 'utf8').includes('writeConfigIfChanged'), true);
+});

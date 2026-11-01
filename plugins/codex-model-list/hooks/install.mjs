@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -7,6 +7,7 @@ import {
   resolveProvider,
   rewriteMarketplaceSource,
   rewriteProviderBaseUrl,
+  writeConfigIfChanged,
 } from './config.mjs';
 
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -64,9 +65,7 @@ export function install({ sourceRoot = PLUGIN_ROOT, homePath = home, dataPath = 
 
   const withMarketplace = rewriteMarketplaceSource(updated, 'codex-model-list', checkout)
     ?? `${updated.trimEnd()}\n\n[marketplaces.codex-model-list]\nsource_type = "local"\nsource = ${JSON.stringify(checkout)}\n`;
-  const temporaryConfig = `${configPath}.${process.pid}.tmp`;
-  writeFileSync(temporaryConfig, withMarketplace, 'utf8');
-  renameSync(temporaryConfig, configPath);
+  writeConfigIfChanged(configPath, withMarketplace);
   if (existsSync(savedPath)) rmSync(savedPath, { force: true });
   writeFileSync(join(dataPath, 'current.txt'), `${checkout}\n`, 'utf8');
   writeFileSync(join(dataPath, 'state.json'), `${JSON.stringify({ commit, installedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8');

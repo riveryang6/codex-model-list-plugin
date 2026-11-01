@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join, posix, win32 } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -159,4 +159,15 @@ export function rewriteMarketplaceSource(text, marketplaceName, replacement) {
   const source = /^source\s*=\s*.*$/m;
   if (!source.test(section)) return null;
   return text.slice(0, start) + section.replace(source, `source = ${JSON.stringify(replacement)}`) + text.slice(end);
+}
+
+// Codex reads config.toml while it starts and watches it at runtime. Replacing
+// the file in place would make the app see two different documents within one
+// short window. Keep the old path intact and update it atomically instead.
+export function writeConfigIfChanged(path, text) {
+  if (existsSync(path) && readFileSync(path, 'utf8') === text) return false;
+  const temporary = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporary, text, 'utf8');
+  renameSync(temporary, path);
+  return true;
 }

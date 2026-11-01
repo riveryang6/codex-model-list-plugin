@@ -1,6 +1,6 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { activePluginRoot, codexHome, rewriteMarketplaceSource } from './config.mjs';
+import { activePluginRoot, codexHome, rewriteMarketplaceSource, writeConfigIfChanged } from './config.mjs';
 
 const home = codexHome();
 const current = activePluginRoot(home);
@@ -51,8 +51,4 @@ function assertTableHeadersValid(source) {
 assertTableHeadersValid(text);
 const updated = rewriteMarketplaceSource(text, 'codex-model-list', current);
 if (!updated) throw new Error('Codex Model List marketplace is not configured.');
-if (updated !== text) {
-  const temporaryConfig = `${configPath}.${process.pid}.tmp`;
-  writeFileSync(temporaryConfig, updated, 'utf8');
-  renameSync(temporaryConfig, configPath);
-}
+writeConfigIfChanged(configPath, updated);

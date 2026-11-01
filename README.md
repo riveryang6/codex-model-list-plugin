@@ -95,7 +95,7 @@ takes precedence over pi.dev, since it describes the endpoint actually in use.
 The background updater checks the latest remote commit with a five-second timeout.
 
 - A different commit triggers a shallow fetch into `~/.codex/codex-model-list/versions/<commit>`, refreshes the Codex plugin cache, and only then switches `current.txt`/the `current` symlink. An interrupted update therefore leaves the previous version fully usable.
-- The activation step never rewrites `config.toml` unless the marketplace source actually changed, and it refuses to edit a file with an unclosed table header. A malformed user config therefore stays visible instead of being repeatedly modified by the background updater.
+- The activation step never rewrites `config.toml` unless the marketplace source actually changed. It replaces the file only after the new content is fully written, and refuses to edit a file with an unclosed table header or quote. A malformed user config therefore stays visible instead of being repeatedly modified by the background updater.
 - A timeout, network failure, or a dirty local checkout leaves the installed version untouched.
 - Git is resolved from `CODEX_MODEL_LIST_GIT`, `PATH`, the standard Git install directories, and the Codex runtime directories. Codex starts background tasks with a reduced PATH, so relying on a bare `git` command would make updates silently stop.
 - Versions are tracked by commit SHA, not by the plugin manifest version.
