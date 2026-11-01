@@ -5,6 +5,61 @@ export const MANAGED_DESCRIPTION = 'Model exposed through the active Codex provi
 export const LEGACY_MANAGED_DESCRIPTION = 'Lifaplus model exposed through the configured OpenAI-compatible Responses API.';
 export const ALLOWED_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
+// These describe what the model can do through Codex, not what the upstream
+// model itself can do. A model added by a relay inherits this tool profile
+// from the newest GPT entry in the catalog. pi.dev still wins for the
+// capabilities it describes (see updateMetadata).
+export const GPT_TOOL_INHERITANCE_FIELDS = [
+  'tool_mode',
+  'use_responses_lite',
+  'experimental_supported_tools',
+  'supports_experimental_context',
+  'node_repl_disabled',
+  'node_repl_auto_review_required',
+  'web_search_tool_type',
+  'supports_search_tool',
+  'apply_patch_tool_type',
+  'shell_type',
+  'multi_agent_version',
+  'include_skills_usage_instructions',
+  'include_plugin_usage_instructions',
+  'include_apps_usage_instructions',
+  'multi_agent_reasoning_effort',
+];
+
+function versionParts(id) {
+  const match = /^gpt-(\d+(?:\.\d+)*)(?:-|$)/i.exec(String(id ?? '').trim());
+  return match ? match[1].split('.').map(value => Number(value)) : null;
+}
+
+function compareVersions(left, right) {
+  const length = Math.max(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0);
+    if (difference) return difference;
+  }
+  return 0;
+}
+
+// Version order decides the baseline. Display priority and list order must not
+// let an older model become the source of newer tool capabilities.
+export function newestGptTemplate(models) {
+  const candidates = (Array.isArray(models) ? models : []).filter(model =>
+    versionParts(model?.slug) != null
+      && typeof model.tool_mode === 'string'
+      && model.tool_mode.length > 0
+  );
+  candidates.sort((left, right) => compareVersions(versionParts(right.slug), versionParts(left.slug)));
+  return candidates[0] ?? null;
+}
+
+function inheritToolProfile(model, profile, state) {
+  if (!profile) return;
+  for (const field of GPT_TOOL_INHERITANCE_FIELDS) {
+    if (profile[field] !== undefined) setProperty(model, field, profile[field], state);
+  }
+}
+
 function normalizeId(id) {
   return String(id).trim().toLowerCase().replaceAll('.', '-');
 }
@@ -174,7 +229,8 @@ function summaryDefault(existing, options) {
   return 'auto';
 }
 
-function updateMetadata(model, remote, pi, existing, fallback, descriptions, state, options = {}) {
+function updateMetadata(model, remote, pi, existing, fallback, descriptions, toolProfile, state, options = {}) {
+  inheritToolProfile(model, toolProfile, state);
   const efforts = effortsFor(model.slug, pi, existing, fallback);
   const definitions = effortDefinitions(efforts, descriptions, existing);
   if (JSON.stringify(model.supported_reasoning_levels) !== JSON.stringify(definitions)) {
@@ -221,19 +277,16 @@ function updateMetadata(model, remote, pi, existing, fallback, descriptions, sta
     const modalities = [...new Set(pi.input.filter(value => ['text', 'image'].includes(value)))];
     if (modalities.length) setProperty(model, 'input_modalities', modalities, state);
   }
-  const grammar = pi?.compat?.supportsOpenAIGrammarTools === true;
-  setProperty(model, 'tool_mode', grammar ? 'code_mode_only' : 'direct', state);
-  setProperty(model, 'supports_search_tool', pi?.compat?.supportsToolSearch === true, state);
-  setProperty(model, 'shell_type', 'unified_exec', state);
-  // Every catalog entry asks Codex for the lite Responses payload regardless
-  // of the upstream, so the flag is defaulted rather than derived from pi.dev
-  // grammar-tool metadata.
-  setProperty(model, 'use_responses_lite', true, state);
+  // pi.dev describes the upstream endpoint, so its explicit tool capabilities
+  // take precedence over the inherited GPT profile.
+  if (pi?.compat?.supportsOpenAIGrammarTools !== undefined) {
+    setProperty(model, 'tool_mode', pi.compat.supportsOpenAIGrammarTools ? 'code_mode_only' : 'direct', state);
+  }
+  if (pi?.compat?.supportsToolSearch !== undefined) {
+    setProperty(model, 'supports_search_tool', pi.compat.supportsToolSearch === true, state);
+  }
   if (!model.input_modalities?.includes('image') || !/^gpt-/.test(model.slug)) {
     setProperty(model, 'supports_image_detail_original', false, state);
-  }
-  for (const flag of ['include_skills_usage_instructions', 'include_plugin_usage_instructions', 'include_apps_usage_instructions']) {
-    setProperty(model, flag, true, state);
   }
 }
 
@@ -255,6 +308,7 @@ export function buildCatalog(catalog, templateCatalog, remoteModels, providerInd
   }
   const template = templateModels.find(isManagedModel) || oldModels.find(isManagedModel);
   if (!template) throw new Error('No managed model template is available.');
+  const toolProfile = options.toolProfile ?? newestGptTemplate([...oldModels, ...templateModels]) ?? template;
   const byId = new Map(metadataModels.map(model => [String(model.slug), model]));
   const byNormalized = new Map(metadataModels.map(model => [normalizeId(model.slug), model]));
   let nextPriority = metadataModels.length
@@ -281,7 +335,7 @@ export function buildCatalog(catalog, templateCatalog, remoteModels, providerInd
     }));
     model.slug = id;
     if (!model.display_name) model.display_name = id;
-    updateMetadata(model, remote, getPiModel(id, providerIndex), existing, fallback, descriptions, state, options);
+    updateMetadata(model, remote, getPiModel(id, providerIndex), existing, fallback, descriptions, toolProfile, state, options);
     refreshedModels.push(model);
   }
   return { ...(catalog ?? templateCatalog), models: refreshedModels };

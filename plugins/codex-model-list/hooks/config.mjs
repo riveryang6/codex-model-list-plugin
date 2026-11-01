@@ -58,6 +58,7 @@ function parseAssignment(line) {
 export function parseConfig(text) {
   const top = {};
   const providers = {};
+  const marketplaces = {};
   let section = null;
   for (const raw of String(text ?? '').split(/\r?\n/)) {
     const line = raw.trim();
@@ -73,11 +74,15 @@ export function parseConfig(text) {
       const name = section.slice('model_providers.'.length);
       providers[name] ??= {};
       providers[name][assignment.key] = assignment.value;
+    } else if (section?.startsWith('marketplaces.')) {
+      const name = section.slice('marketplaces.'.length);
+      marketplaces[name] ??= {};
+      marketplaces[name][assignment.key] = assignment.value;
     } else if (!section) {
       top[assignment.key] = assignment.value;
     }
   }
-  return { top, providers };
+  return { top, providers, marketplaces };
 }
 
 export function readConfig(home = codexHome()) {

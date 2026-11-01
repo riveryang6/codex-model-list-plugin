@@ -1,6 +1,6 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { activePluginRoot, codexHome, rewriteMarketplaceSource, writeConfigIfChanged } from './config.mjs';
+import { activePluginRoot, codexHome, readConfig, rewriteMarketplaceSource, writeConfigIfChanged } from './config.mjs';
 
 const home = codexHome();
 const current = activePluginRoot(home);
@@ -16,6 +16,31 @@ function replaceDirectory(source, target) {
   cpSync(source, temporary, { recursive: true, dereference: true });
   rmSync(target, { recursive: true, force: true });
   renameSync(temporary, target);
+}
+
+// Codex copies plugin skills from its bundled marketplace into
+// ~/.codex/plugins/cache. An interrupted copy can leave the skills directory
+// empty, which hides the Browser skill while the plugin still reports enabled.
+// Restore only missing skill trees from the marketplace source.
+export function repairSkillCache(sourceRoot, cacheRoot) {
+  const sourceSkills = join(sourceRoot, 'skills');
+  const cacheSkills = join(cacheRoot, 'skills');
+  if (!existsSync(sourceSkills)) return [];
+  mkdirSync(cacheSkills, { recursive: true });
+  const repaired = [];
+  for (const entry of readdirSync(sourceSkills, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const source = join(sourceSkills, entry.name);
+    const target = join(cacheSkills, entry.name);
+    const sourceFile = join(source, 'SKILL.md');
+    if (!existsSync(sourceFile)) continue;
+    const targetFile = join(target, 'SKILL.md');
+    if (existsSync(targetFile) && statSync(targetFile).size > 0) continue;
+    rmSync(target, { recursive: true, force: true });
+    cpSync(source, target, { recursive: true, force: true, dereference: true });
+    repaired.push(entry.name);
+  }
+  return repaired;
 }
 
 if (!existsSync(join(pluginSource, '.codex-plugin', 'plugin.json'))) {
@@ -52,3 +77,18 @@ assertTableHeadersValid(text);
 const updated = rewriteMarketplaceSource(text, 'codex-model-list', current);
 if (!updated) throw new Error('Codex Model List marketplace is not configured.');
 writeConfigIfChanged(configPath, updated);
+
+// The Browser plugin shares the node_repl tool with model-list, so an empty
+// Browser skill cache also makes browser request handling look unavailable.
+const marketplaces = readConfig(home).marketplaces;
+const browserMarketplace = process.env.CODEX_BROWSER_PLUGIN_SOURCE
+  || (marketplaces?.['openai-bundled']?.source
+    ? join(marketplaces['openai-bundled'].source, 'plugins', 'browser')
+    : null);
+const browserCache = join(home, 'plugins', 'cache', 'openai-bundled', 'browser');
+if (browserMarketplace && existsSync(browserMarketplace) && existsSync(browserCache)) {
+  const versions = readdirSync(browserCache, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name);
+  for (const version of versions) repairSkillCache(browserMarketplace, join(browserCache, version));
+}

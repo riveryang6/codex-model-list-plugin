@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCatalog, getPiModel, isManagedModel, LEGACY_MANAGED_DESCRIPTION, MANAGED_DESCRIPTION } from '../plugins/codex-model-list/hooks/catalog.mjs';
+import {
+  buildCatalog,
+  getPiModel,
+  isManagedModel,
+  LEGACY_MANAGED_DESCRIPTION,
+  MANAGED_DESCRIPTION,
+  newestGptTemplate,
+} from '../plugins/codex-model-list/hooks/catalog.mjs';
 
 function templateModel(slug = 'template') {
   return {
@@ -149,8 +156,8 @@ test('an installed managed catalog keeps its full model messages and per-model s
   assert.equal(isManagedModel(model), true);
 });
 
-test('every catalog entry defaults to the lite Responses payload', () => {
-  const template = { models: [templateModel()] };
+test('every catalog entry inherits the lite Responses payload from the GPT baseline', () => {
+  const template = { models: [gptTemplate('gpt-6.1-sol', 1)] };
   const result = buildCatalog(
     template,
     template,
@@ -161,4 +168,74 @@ test('every catalog entry defaults to the lite Responses payload', () => {
     ]),
   );
   assert.deepEqual(result.models.map(model => model.use_responses_lite), [true, true, true]);
+});
+
+function gptTemplate(slug, version, toolMode = 'code_mode_only') {
+  return {
+    slug,
+    display_name: slug,
+    description: MANAGED_DESCRIPTION,
+    priority: version,
+    tool_mode: toolMode,
+    use_responses_lite: true,
+    experimental_supported_tools: ['clock'],
+    supports_search_tool: true,
+    node_repl_disabled: false,
+    node_repl_auto_review_required: true,
+    include_skills_usage_instructions: false,
+    include_plugin_usage_instructions: false,
+    include_apps_usage_instructions: false,
+    input_modalities: ['text', 'image'],
+  };
+}
+
+test('the newest GPT version supplies the baseline regardless of display order', () => {
+  const models = [gptTemplate('gpt-5.6-sol', 5), gptTemplate('gpt-6-sol', 3), gptTemplate('gpt-6.1-sol', 1)];
+  assert.equal(newestGptTemplate(models).slug, 'gpt-6.1-sol');
+});
+
+test('relay models inherit the full GPT tool profile', () => {
+  const models = [gptTemplate('gpt-6.1-sol', 1), gptTemplate('gpt-6-astra', 2)];
+  const relay = {
+    ...templateModel('relay-model'),
+    tool_mode: 'direct',
+    supports_search_tool: false,
+  };
+  const result = buildCatalog(
+    { models: [...models, relay] },
+    { models },
+    [{ id: 'relay-model' }],
+  );
+  const model = result.models[0];
+  assert.equal(model.tool_mode, 'code_mode_only');
+  assert.equal(model.use_responses_lite, true);
+  assert.equal(model.supports_search_tool, true);
+  assert.equal(model.node_repl_auto_review_required, true);
+  assert.deepEqual(model.experimental_supported_tools, ['clock']);
+  assert.equal(model.include_plugin_usage_instructions, false);
+});
+
+test('explicit pi.dev capabilities win over the inherited GPT tool profile', () => {
+  const models = [gptTemplate('gpt-6.1-sol', 1)];
+  const relay = templateModel('direct-chat');
+  const result = buildCatalog(
+    { models: [...models, relay] },
+    { models },
+    [{ id: 'direct-chat' }],
+    new Map([['direct-chat', { compat: { supportsOpenAIGrammarTools: true, supportsToolSearch: true } }]]),
+  );
+  const model = result.models[0];
+  assert.equal(model.tool_mode, 'code_mode_only');
+  assert.equal(model.supports_search_tool, true);
+  assert.equal(model.use_responses_lite, true);
+  assert.deepEqual(model.experimental_supported_tools, ['clock']);
+});
+
+test('missing pi.dev capability metadata keeps the GPT defaults', () => {
+  const models = [gptTemplate('gpt-6.1-sol', 1)];
+  const relay = { ...templateModel('relay-model'), tool_mode: 'direct', supports_search_tool: false };
+  const result = buildCatalog({ models: [...models, relay] }, { models }, [{ id: 'relay-model' }]);
+  const model = result.models[0];
+  assert.equal(model.tool_mode, 'code_mode_only');
+  assert.equal(model.supports_search_tool, true);
 });

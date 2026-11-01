@@ -29,6 +29,10 @@ codex plugin add codex-model-list@codex-model-list
 
 `install-macos.sh` registers the commit updater as a launchd agent. The plugin intentionally has no Codex lifecycle-hook declaration, so it does not require repeated hook trust prompts.
 
+Activation also checks the installed Browser plugin cache. If Codex left a
+plugin cache without its `skills/<name>/SKILL.md` tree, the missing skills are
+copied from the configured bundled marketplace. Existing skill files are kept.
+
 ### Windows
 
 Run PowerShell 7 or Windows PowerShell from the repository root:
@@ -52,12 +56,19 @@ The plugin reads, on every successful sync:
 
 Reinstalling a release that used the retired local proxy restores the original endpoint first; otherwise `base_url` is left exactly as configured.
 
-## Responses payload
+## Tool capabilities
 
-Every generated catalog entry sets `use_responses_lite` to `true`, including
-models whose provider advertises grammar tools. The flag no longer depends on
-pi.dev metadata, so a sync always requests the lite Responses payload for the
-whole list.
+Generated models inherit their Codex tool profile from the newest GPT entry in
+the catalog, selected by model version. This includes `use_responses_lite`,
+`tool_mode`, search and plugin instructions, node-repl policy, shell and patch
+tool types, and the other session-level tool fields. Upstream-specific
+reasoning levels, context limits, input modalities, and model messages remain
+per model.
+
+An explicit capability from pi.dev wins when it describes the upstream
+endpoint, such as grammar-tool or tool-search support. Otherwise the inherited
+GPT profile remains in place. This keeps relay and third-party models able to
+use the same Browser, plugin, and skill tools as the latest GPT model.
 
 ## Reasoning summaries
 

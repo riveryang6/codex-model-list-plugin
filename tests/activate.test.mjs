@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -66,4 +66,34 @@ source = "C:\\old"
   assert.match(updated, /source = ".*current"/);
   assert.doesNotMatch(updated, /C:\\old/);
   assert.equal(readFileSync(join(current, 'plugins', 'codex-model-list', 'hooks', 'activate.mjs'), 'utf8').includes('writeConfigIfChanged'), true);
+});
+
+test('activate restores a missing skill in the Browser cache', () => {
+  const home = mkdtempSync(join(tmpdir(), 'codex-model-list-activate-browser-'));
+  const current = join(home, 'codex-model-list', 'versions', 'current');
+  const configText = `model_provider = "custom"
+
+[marketplaces.codex-model-list]
+source_type = "local"
+source = ${JSON.stringify(current)}
+`;
+  setup(home, configText);
+
+  const bundle = join(home, 'bundled');
+  const skills = join(bundle, 'plugins', 'browser', 'skills', 'control-in-app-browser');
+  mkdirSync(skills, { recursive: true });
+  writeFileSync(join(skills, 'SKILL.md'), '# Browser\n');
+  mkdirSync(join(home, 'plugins', 'cache', 'openai-bundled', 'browser', '9.9.9', 'skills'), { recursive: true });
+  writeFileSync(join(home, 'config.toml'), `${configText}
+
+[marketplaces.openai-bundled]
+source_type = "local"
+source = ${JSON.stringify(bundle)}
+`);
+
+  const result = activate(home);
+  assert.equal(result.status, 0, result.stderr);
+  const cached = join(home, 'plugins', 'cache', 'openai-bundled', 'browser', '9.9.9', 'skills', 'control-in-app-browser', 'SKILL.md');
+  assert.equal(existsSync(cached), true);
+  assert.equal(readFileSync(cached, 'utf8'), '# Browser\n');
 });
