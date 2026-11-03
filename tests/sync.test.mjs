@@ -31,9 +31,9 @@ test('each sync reads the provider selected in config.toml', async () => {
 
   try {
     writeConfig(`http://127.0.0.1:${port}/v1`);
-    await sync({ home, env: { CODEX_MODEL_LIST_PI_URL: `http://127.0.0.1:${port}/pi` } });
+    await sync({ home, env: { CODEX_MODEL_LIST_PI_URL: `http://127.0.0.1:${port}/pi` }, loadCodexModel: () => null });
     writeConfig(`http://127.0.0.1:${port}/v2`);
-    await sync({ home, env: { CODEX_MODEL_LIST_PI_URL: `http://127.0.0.1:${port}/pi` } });
+    await sync({ home, env: { CODEX_MODEL_LIST_PI_URL: `http://127.0.0.1:${port}/pi` }, loadCodexModel: () => null });
   } finally {
     server.close();
   }

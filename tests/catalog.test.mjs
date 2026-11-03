@@ -239,3 +239,81 @@ test('missing pi.dev capability metadata keeps the GPT defaults', () => {
   assert.equal(model.tool_mode, 'code_mode_only');
   assert.equal(model.supports_search_tool, true);
 });
+
+test('relay models inherit full Codex instructions and child-thread messages', () => {
+  const legacyInstructions = 'You are Codex, an agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.';
+  const relay = {
+    ...templateModel('relay-model'),
+    model_messages: {
+      instructions_template: legacyInstructions,
+      instructions_variables: { personality_default: '' },
+      approvals: null,
+    },
+  };
+  const baseline = {
+    ...gptTemplate('gpt-6.1-sol', 1),
+    model_messages: {
+      instructions_template: 'Full Codex instructions with tool and collaboration guidance.',
+      persistent_instructions: 'Persistent mode guidance.',
+      collaboration_modes: { default: 'Default mode guidance.', plan: 'Plan mode guidance.' },
+      approvals: { never: 'Never approve.' },
+      multi_agent: {
+        role: { root: 'Root role.', subagent: 'Subagent role.' },
+        mode: { explicit: 'Explicit mode.', proactive: 'Proactive mode.' },
+      },
+      tools: {
+        multi_agent: {
+          spawn_agent: { description: 'Spawn a child.', parameters: '{"type":"object"}' },
+        },
+      },
+    },
+  };
+
+  const result = buildCatalog(
+    { models: [relay] },
+    { models: [relay] },
+    [{ id: 'relay-model' }],
+    new Map(),
+    { codexModel: baseline },
+  );
+  const model = result.models[0];
+  assert.equal(model.model_messages.instructions_template, baseline.model_messages.instructions_template);
+  assert.equal(model.model_messages.persistent_instructions, 'Persistent mode guidance.');
+  assert.equal(model.model_messages.collaboration_modes.plan, 'Plan mode guidance.');
+  assert.equal(model.model_messages.approvals.never, 'Never approve.');
+  assert.equal(model.model_messages.multi_agent.role.subagent, 'Subagent role.');
+  assert.equal(model.model_messages.tools.multi_agent.spawn_agent.description, 'Spawn a child.');
+  assert.equal(model.model_messages.instructions_variables.personality_default, '');
+});
+
+test('custom instructions and nested message overrides survive inheritance', () => {
+  const relay = {
+    ...templateModel('relay-model'),
+    model_messages: {
+      instructions_template: 'A deliberate custom model prompt.',
+      multi_agent: { role: { root: 'Custom root role.' } },
+      permissions: { workspace_write: 'Custom workspace policy.' },
+    },
+  };
+  const baseline = {
+    ...gptTemplate('gpt-6.1-sol', 1),
+    model_messages: {
+      instructions_template: 'Bundled Codex instructions.',
+      multi_agent: { role: { root: 'Bundled root role.', subagent: 'Bundled subagent role.' } },
+      permissions: { workspace_write: 'Bundled workspace policy.', read_only: 'Bundled read-only policy.' },
+    },
+  };
+  const result = buildCatalog(
+    { models: [relay] },
+    { models: [relay] },
+    [{ id: 'relay-model' }],
+    new Map(),
+    { codexModel: baseline },
+  );
+  const messages = result.models[0].model_messages;
+  assert.equal(messages.instructions_template, 'A deliberate custom model prompt.');
+  assert.equal(messages.multi_agent.role.root, 'Custom root role.');
+  assert.equal(messages.multi_agent.role.subagent, 'Bundled subagent role.');
+  assert.equal(messages.permissions.workspace_write, 'Custom workspace policy.');
+  assert.equal(messages.permissions.read_only, 'Bundled read-only policy.');
+});

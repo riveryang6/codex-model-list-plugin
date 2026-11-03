@@ -59,10 +59,17 @@ Reinstalling a release that used the retired local proxy restores the original e
 ## Tool capabilities
 
 Generated models inherit their Codex tool profile from the newest GPT entry in
-the catalog, selected by model version. This includes `use_responses_lite`,
-`tool_mode`, search and plugin instructions, node-repl policy, shell and patch
-tool types, and the other session-level tool fields. Upstream-specific
-reasoning levels, context limits, input modalities, and model messages remain
+the installed client's bundled catalog, selected by model version. This includes
+`use_responses_lite`, `tool_mode`, search and plugin instructions, node-repl
+policy, shell and patch tool types, and the other session-level tool fields.
+
+The same bundled profile supplies Codex's model messages: the full base
+instructions, collaboration modes, multi-agent role guidance, tool message
+overrides, approvals, and related behavior text. Custom values already present
+on a model are preserved, and only the old one-line managed bootstrap prompt is
+replaced. This keeps relay and third-party models, including their child
+threads, on the same Codex context and tool contract as the bundled GPT model.
+Upstream-specific reasoning levels, context limits, and input modalities remain
 per model.
 
 An explicit capability from pi.dev wins when it describes the upstream

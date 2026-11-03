@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildCatalog, buildPiIndex, isManagedModel, writeCatalog } from './catalog.mjs';
+import { loadBundledCodexModel } from './codex-profile.mjs';
 import {
   codexHome,
   readAuth,
@@ -48,7 +49,7 @@ async function fetchModels(provider, credential) {
   return models;
 }
 
-export async function sync({ home = codexHome(), env = process.env } = {}) {
+export async function sync({ home = codexHome(), env = process.env, loadCodexModel = loadBundledCodexModel } = {}) {
   // Read the active provider on every run: a provider switch in config.toml
   // takes effect at the next sync without reinstalling anything.
   const config = readConfig(home);
@@ -66,13 +67,22 @@ export async function sync({ home = codexHome(), env = process.env } = {}) {
   const remoteModels = await fetchModels(provider, credential);
   const pi = await loadPiCatalog({ home, env });
   const index = buildPiIndex(pi?.catalog);
+  let codexModel = null;
+  let codexProfileNote = 'Codex bundled model unavailable; kept installed model messages';
+  try {
+    codexModel = loadCodexModel({ home, env });
+    if (codexModel) codexProfileNote = `Codex model profile ${codexModel.slug}`;
+  } catch (error) {
+    codexProfileNote = `Codex bundled model unavailable; kept installed model messages (${String(error?.message || error).slice(0, 160)})`;
+  }
   const nextCatalog = buildCatalog(existing ?? template, template, remoteModels, index, {
     summary: config.top.model_reasoning_summary || null,
+    codexModel,
   });
   writeCatalog(catalogPath, nextCatalog);
   const piNote = pi ? `pi.dev ${pi.source} (${index.size} ids)` : 'pi.dev unavailable';
-  log(home, `Synced ${remoteModels.length} models from ${resolveModelsEndpoint(provider)}; credential ${credential.source}; ${piNote}.`);
-  return { catalogPath, provider, credentialSource: credential.source, modelCount: remoteModels.length, piSource: pi?.source ?? null };
+  log(home, `Synced ${remoteModels.length} models from ${resolveModelsEndpoint(provider)}; credential ${credential.source}; ${piNote}; ${codexProfileNote}.`);
+  return { catalogPath, provider, credentialSource: credential.source, modelCount: remoteModels.length, piSource: pi?.source ?? null, codexModel: codexModel?.slug ?? null };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

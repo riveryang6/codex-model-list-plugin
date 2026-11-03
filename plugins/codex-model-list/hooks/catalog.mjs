@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 export const MANAGED_DESCRIPTION = 'Model exposed through the active Codex provider.';
 export const LEGACY_MANAGED_DESCRIPTION = 'Lifaplus model exposed through the configured OpenAI-compatible Responses API.';
 export const ALLOWED_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+const LEGACY_THIN_MODEL_INSTRUCTIONS = /^You are Codex, an agent based on GPT-[^.]+?\. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled\.$/i;
 
 // These describe what the model can do through Codex, not what the upstream
 // model itself can do. A model added by a relay inherits this tool profile
@@ -58,6 +59,49 @@ function inheritToolProfile(model, profile, state) {
   for (const field of GPT_TOOL_INHERITANCE_FIELDS) {
     if (profile[field] !== undefined) setProperty(model, field, profile[field], state);
   }
+}
+
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function clone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function mergeMissing(current, inherited) {
+  if (current === undefined || current === null) return clone(inherited);
+  if (!isObject(current) || !isObject(inherited)) return current;
+  const merged = { ...current };
+  for (const [name, value] of Object.entries(inherited)) {
+    merged[name] = mergeMissing(merged[name], value);
+  }
+  return merged;
+}
+
+function needsCodexInstructions(current, inherited) {
+  if (typeof inherited !== 'string' || !inherited.trim()) return false;
+  if (typeof current !== 'string' || !current.trim()) return true;
+  return LEGACY_THIN_MODEL_INSTRUCTIONS.test(current.trim());
+}
+
+// model_messages controls the base Codex instructions, collaboration modes,
+// subagent role messages, tool wording, and other behavior that lives above a
+// model's upstream API. Managed relay models otherwise keep the old one-line
+// bootstrap prompt and lose most of Codex's model-visible context.
+function inheritModelMessages(model, profile, state) {
+  const inherited = profile?.model_messages;
+  if (!isObject(inherited)) return;
+  const current = isObject(model.model_messages) ? model.model_messages : {};
+  const next = { ...current };
+  if (needsCodexInstructions(current.instructions_template, inherited.instructions_template)) {
+    next.instructions_template = inherited.instructions_template;
+  }
+  for (const [name, value] of Object.entries(inherited)) {
+    if (name === 'instructions_template') continue;
+    next[name] = mergeMissing(next[name], value);
+  }
+  setProperty(model, 'model_messages', next, state);
 }
 
 function normalizeId(id) {
@@ -229,8 +273,9 @@ function summaryDefault(existing, options) {
   return 'auto';
 }
 
-function updateMetadata(model, remote, pi, existing, fallback, descriptions, toolProfile, state, options = {}) {
+function updateMetadata(model, remote, pi, existing, fallback, descriptions, toolProfile, messageProfile, state, options = {}) {
   inheritToolProfile(model, toolProfile, state);
+  inheritModelMessages(model, messageProfile, state);
   const efforts = effortsFor(model.slug, pi, existing, fallback);
   const definitions = effortDefinitions(efforts, descriptions, existing);
   if (JSON.stringify(model.supported_reasoning_levels) !== JSON.stringify(definitions)) {
@@ -308,7 +353,9 @@ export function buildCatalog(catalog, templateCatalog, remoteModels, providerInd
   }
   const template = templateModels.find(isManagedModel) || oldModels.find(isManagedModel);
   if (!template) throw new Error('No managed model template is available.');
-  const toolProfile = options.toolProfile ?? newestGptTemplate([...oldModels, ...templateModels]) ?? template;
+  const codexProfile = options.codexModel ?? newestGptTemplate([...oldModels, ...templateModels]) ?? template;
+  const toolProfile = options.toolProfile ?? codexProfile;
+  const messageProfile = options.messageProfile ?? codexProfile;
   const byId = new Map(metadataModels.map(model => [String(model.slug), model]));
   const byNormalized = new Map(metadataModels.map(model => [normalizeId(model.slug), model]));
   let nextPriority = metadataModels.length
@@ -335,7 +382,7 @@ export function buildCatalog(catalog, templateCatalog, remoteModels, providerInd
     }));
     model.slug = id;
     if (!model.display_name) model.display_name = id;
-    updateMetadata(model, remote, getPiModel(id, providerIndex), existing, fallback, descriptions, toolProfile, state, options);
+    updateMetadata(model, remote, getPiModel(id, providerIndex), existing, fallback, descriptions, toolProfile, messageProfile, state, options);
     refreshedModels.push(model);
   }
   return { ...(catalog ?? templateCatalog), models: refreshedModels };
