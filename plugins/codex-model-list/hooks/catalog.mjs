@@ -276,6 +276,12 @@ function summaryDefault(existing, options) {
 function updateMetadata(model, remote, pi, existing, fallback, descriptions, toolProfile, messageProfile, state, options = {}) {
   inheritToolProfile(model, toolProfile, state);
   inheritModelMessages(model, messageProfile, state);
+  // Relay routes still run inside Codex and need the client to describe the
+  // available skills, plugins, and connectors even when the bundled GPT entry
+  // leaves those opt-ins disabled for a first-party-only surface.
+  for (const flag of ['include_skills_usage_instructions', 'include_plugin_usage_instructions', 'include_apps_usage_instructions']) {
+    setProperty(model, flag, true, state);
+  }
   const efforts = effortsFor(model.slug, pi, existing, fallback);
   const definitions = effortDefinitions(efforts, descriptions, existing);
   if (JSON.stringify(model.supported_reasoning_levels) !== JSON.stringify(definitions)) {

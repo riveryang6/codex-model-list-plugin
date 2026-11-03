@@ -70,7 +70,8 @@ on a model are preserved, and only the old one-line managed bootstrap prompt is
 replaced. This keeps relay and third-party models, including their child
 threads, on the same Codex context and tool contract as the bundled GPT model.
 Upstream-specific reasoning levels, context limits, and input modalities remain
-per model.
+per model. Skills, plugin, and connector guidance stay enabled for relay routes
+so the model can discover the same capabilities as a first-party Codex model.
 
 An explicit capability from pi.dev wins when it describes the upstream
 endpoint, such as grammar-tool or tool-search support. Otherwise the inherited

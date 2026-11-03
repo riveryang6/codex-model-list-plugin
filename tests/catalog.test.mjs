@@ -212,7 +212,9 @@ test('relay models inherit the full GPT tool profile', () => {
   assert.equal(model.supports_search_tool, true);
   assert.equal(model.node_repl_auto_review_required, true);
   assert.deepEqual(model.experimental_supported_tools, ['clock']);
-  assert.equal(model.include_plugin_usage_instructions, false);
+  assert.equal(model.include_plugin_usage_instructions, true);
+  assert.equal(model.include_skills_usage_instructions, true);
+  assert.equal(model.include_apps_usage_instructions, true);
 });
 
 test('explicit pi.dev capabilities win over the inherited GPT tool profile', () => {
@@ -316,4 +318,25 @@ test('custom instructions and nested message overrides survive inheritance', () 
   assert.equal(messages.multi_agent.role.subagent, 'Bundled subagent role.');
   assert.equal(messages.permissions.workspace_write, 'Custom workspace policy.');
   assert.equal(messages.permissions.read_only, 'Bundled read-only policy.');
+});
+
+test('managed relay models keep skills, plugins, and app guidance enabled', () => {
+  const relay = templateModel('relay-model');
+  const baseline = {
+    ...gptTemplate('gpt-6.1-sol', 1),
+    include_skills_usage_instructions: false,
+    include_plugin_usage_instructions: false,
+    include_apps_usage_instructions: false,
+  };
+  const result = buildCatalog(
+    { models: [relay] },
+    { models: [relay] },
+    [{ id: 'relay-model' }],
+    new Map(),
+    { codexModel: baseline },
+  );
+  const model = result.models[0];
+  assert.equal(model.include_skills_usage_instructions, true);
+  assert.equal(model.include_plugin_usage_instructions, true);
+  assert.equal(model.include_apps_usage_instructions, true);
 });
