@@ -4,6 +4,11 @@ import { dirname } from 'node:path';
 export const MANAGED_DESCRIPTION = 'Model exposed through the active Codex provider.';
 export const LEGACY_MANAGED_DESCRIPTION = 'Lifaplus model exposed through the configured OpenAI-compatible Responses API.';
 export const ALLOWED_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+export const ULTRA_DELEGATION_INSTRUCTIONS = `Ultra mode is active. Proactive multi-agent delegation is expected, not optional.
+
+Before starting execution, split the task into independent workstreams. If two or more workstreams can run in parallel, or if a subagent can research, inspect, implement, or verify a bounded part while you continue other work, call spawn_agent immediately. Do not wait for the user to request subagents.
+
+Use fork_turns="none" for self-contained subtasks. Use full history only when the child needs the conversation context. Keep integration, conflict resolution, and final verification with the root agent, and do not repeat work that has been delegated.`;
 const LEGACY_THIN_MODEL_INSTRUCTIONS = /^You are Codex, an agent based on GPT-[^.]+?\. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled\.$/i;
 
 // These describe what the model can do through Codex, not what the upstream
@@ -102,6 +107,28 @@ function inheritModelMessages(model, profile, state) {
     next[name] = mergeMissing(next[name], value);
   }
   setProperty(model, 'model_messages', next, state);
+}
+
+// Ultra is a product-level delegation mode, not another reasoning level. The
+// bundled GPT profile leaves the proactive wording to the harness default;
+// relay models need a concrete rule because they do not receive the same
+// model-side training signal as a first-party Codex model.
+function ensureUltraDelegation(model, state) {
+  if (model.multi_agent_version !== 'v2') return;
+  const messages = isObject(model.model_messages) ? model.model_messages : {};
+  const multiAgent = isObject(messages.multi_agent) ? messages.multi_agent : {};
+  const mode = isObject(multiAgent.mode) ? multiAgent.mode : {};
+  // An explicit catalog/config hint, custom proactive text, or empty string is
+  // a deliberate override and must survive future syncs.
+  if (mode.hint_text !== undefined && mode.hint_text !== null) return;
+  if (mode.proactive !== undefined && mode.proactive !== null) return;
+  setProperty(model, 'model_messages', {
+    ...messages,
+    multi_agent: {
+      ...multiAgent,
+      mode: { ...mode, proactive: ULTRA_DELEGATION_INSTRUCTIONS },
+    },
+  }, state);
 }
 
 function normalizeId(id) {
@@ -276,6 +303,7 @@ function summaryDefault(existing, options) {
 function updateMetadata(model, remote, pi, existing, fallback, descriptions, toolProfile, messageProfile, state, options = {}) {
   inheritToolProfile(model, toolProfile, state);
   inheritModelMessages(model, messageProfile, state);
+  ensureUltraDelegation(model, state);
   // Relay routes still run inside Codex and need the client to describe the
   // available skills, plugins, and connectors even when the bundled GPT entry
   // leaves those opt-ins disabled for a first-party-only surface.

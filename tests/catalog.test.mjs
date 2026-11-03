@@ -7,6 +7,7 @@ import {
   LEGACY_MANAGED_DESCRIPTION,
   MANAGED_DESCRIPTION,
   newestGptTemplate,
+  ULTRA_DELEGATION_INSTRUCTIONS,
 } from '../plugins/codex-model-list/hooks/catalog.mjs';
 
 function templateModel(slug = 'template') {
@@ -177,6 +178,7 @@ function gptTemplate(slug, version, toolMode = 'code_mode_only') {
     description: MANAGED_DESCRIPTION,
     priority: version,
     tool_mode: toolMode,
+    multi_agent_version: 'v2',
     use_responses_lite: true,
     experimental_supported_tools: ['clock'],
     supports_search_tool: true,
@@ -339,4 +341,51 @@ test('managed relay models keep skills, plugins, and app guidance enabled', () =
   assert.equal(model.include_skills_usage_instructions, true);
   assert.equal(model.include_plugin_usage_instructions, true);
   assert.equal(model.include_apps_usage_instructions, true);
+});
+
+test('Ultra mode gets explicit proactive delegation instructions', () => {
+  const relay = templateModel('relay-model');
+  const baseline = {
+    ...gptTemplate('gpt-6.1-sol', 1),
+    model_messages: { multi_agent: { role: { root: 'Root role.', subagent: 'Subagent role.' }, mode: null } },
+  };
+  const result = buildCatalog(
+    { models: [relay] },
+    { models: [relay] },
+    [{ id: 'relay-model' }],
+    new Map(),
+    { codexModel: baseline },
+  );
+  assert.equal(result.models[0].model_messages.multi_agent.mode.proactive, ULTRA_DELEGATION_INSTRUCTIONS);
+});
+
+test('explicit Ultra delegation text and suppression survive syncs', () => {
+  const custom = {
+    ...templateModel('custom'),
+    model_messages: { multi_agent: { mode: { proactive: 'Use my delegation policy.' } } },
+  };
+  const suppressed = {
+    ...templateModel('suppressed'),
+    model_messages: { multi_agent: { mode: { proactive: '' } } },
+  };
+  const hinted = {
+    ...templateModel('hinted'),
+    model_messages: { multi_agent: { mode: { hint_text: 'Use the configured hint.' } } },
+  };
+  const baseline = {
+    ...gptTemplate('gpt-6.1-sol', 1),
+    model_messages: { multi_agent: { role: { root: 'Root role.', subagent: 'Subagent role.' }, mode: null } },
+  };
+  const result = buildCatalog(
+    { models: [custom, suppressed, hinted] },
+    { models: [custom, suppressed, hinted] },
+    [{ id: 'custom' }, { id: 'suppressed' }, { id: 'hinted' }],
+    new Map(),
+    { codexModel: baseline },
+  );
+  const bySlug = new Map(result.models.map(model => [model.slug, model]));
+  assert.equal(bySlug.get('custom').model_messages.multi_agent.mode.proactive, 'Use my delegation policy.');
+  assert.equal(bySlug.get('suppressed').model_messages.multi_agent.mode.proactive, '');
+  assert.equal(bySlug.get('hinted').model_messages.multi_agent.mode.hint_text, 'Use the configured hint.');
+  assert.equal(bySlug.get('hinted').model_messages.multi_agent.mode.proactive, undefined);
 });

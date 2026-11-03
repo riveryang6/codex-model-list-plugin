@@ -73,6 +73,13 @@ Upstream-specific reasoning levels, context limits, and input modalities remain
 per model. Skills, plugin, and connector guidance stay enabled for relay routes
 so the model can discover the same capabilities as a first-party Codex model.
 
+Ultra mode also carries explicit proactive delegation instructions for custom
+models. When a task has independent workstreams, the root agent is told to call
+`spawn_agent` without waiting for a separate user request, use fresh child
+context for self-contained subtasks, and keep integration and final verification
+with the root. Existing custom proactive text, explicit hints, and empty-string
+suppression remain authoritative.
+
 An explicit capability from pi.dev wins when it describes the upstream
 endpoint, such as grammar-tool or tool-search support. Otherwise the inherited
 GPT profile remains in place. This keeps relay and third-party models able to
